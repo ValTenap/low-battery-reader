@@ -73,7 +73,7 @@ select{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--line)
 .empty-note{color:var(--muted);font-size:12.5px}
 
 /* ---------- reader ---------- */
-#doc{position:relative;max-width:var(--measure);margin:0 auto;padding:34px 26px 45vh;font-family:var(--font);font-size:var(--size);line-height:var(--lh);letter-spacing:var(--ls);word-spacing:var(--ws)}
+#doc{position:relative;max-width:var(--measure);margin:0 auto;padding:34px 26px 14vh;font-family:var(--font);font-size:var(--size);line-height:var(--lh);letter-spacing:var(--ls);word-spacing:var(--ws)}
 #doc b{font-weight:700}
 #doc .w{font-weight:400}
 #doc h1{font-size:1.55em;line-height:1.25;margin:0 0 .5em}
@@ -123,6 +123,28 @@ body.dragging .overlay{display:flex}
 .modal .box{background:var(--bg);border-radius:14px;padding:18px;width:min(680px,100%);box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .modal textarea{width:100%;height:46vh;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--panel);color:var(--fg);font:14px/1.5 Inter,sans-serif;resize:vertical}
 .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+/* feedback */
+.feedback{border-top:1px solid var(--line);background:var(--panel);padding:44px 24px 64px;font-family:Inter,sans-serif}
+.fb-inner{max-width:620px;margin:0 auto}
+.pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:3px 10px;margin-bottom:12px}
+.feedback h2{margin:0 0 10px;font-size:22px}
+.feedback p{line-height:1.55;margin:0 0 14px}
+.feedback ol{margin:0 0 22px;padding-left:20px;line-height:1.6}
+.fb-card{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px}
+.fb-tired .row{margin-bottom:4px}
+.fb-tired output{min-width:auto;font-size:14px;color:var(--fg);font-weight:600}
+.fb-scale{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:2px 0 16px}
+.fb-field{display:block;font-size:13.5px;margin:0 0 12px}
+.fb-field input,.fb-field textarea{display:block;width:100%;margin-top:5px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font:14px/1.4 Inter,sans-serif;color:var(--fg)}
+.fb-field textarea{height:72px;resize:vertical}
+.fb-send{width:100%;padding:11px;font-size:14.5px}
+.fb-send:disabled{opacity:.6;cursor:default}
+.fb-status{font-size:13.5px;margin:10px 0 0!important;min-height:1em}
+.fb-status.ok{color:#2b7d3a}.fb-status.err{color:#b52d22}
+.fb-what{margin-top:14px;font-size:13px;color:var(--muted)}
+.fb-what summary{cursor:pointer}
+.fb-what p{font-size:13px;margin:8px 0 0}
+.fb-csv{width:100%;height:70px;margin-top:8px;font:12px/1.4 'JetBrains Mono',monospace;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);padding:8px;display:none}
 .kbd{font:11px Inter,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 </style>
 </head>
@@ -203,6 +225,7 @@ body.dragging .overlay{display:flex}
   <div class="top">
     <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
     <span class="name" id="docName">No paper open</span>
+    <button class="btn" id="fbJump">Give feedback</button>
     <button class="btn" id="pasteBtn">Paste text</button>
     <button class="btn primary" id="openBtn">Open PDF</button>
     <input type="file" id="file" accept="application/pdf,.pdf" hidden>
@@ -221,6 +244,34 @@ body.dragging .overlay{display:flex}
       <p class="small">Your PDF stays on your device: it is read in this page and never uploaded.<br>Works best on text-based PDFs (arXiv, journal downloads). Scanned PDFs have no text to extract.</p>
     </div>
   </article>
+
+  <section class="feedback" id="feedback">
+    <div class="fb-inner">
+      <span class="pill">Prototype</span>
+      <h2>Help tune the presets</h2>
+      <p>This website is a prototype. Please adjust and experiment with the parameters in the side panel until you have reached a setting that makes it more comfortable to read.</p>
+      <ol>
+        <li>Open a paper (or the sample) and play with the settings.</li>
+        <li>When it feels comfortable, tell us how tired you are right now.</li>
+        <li>Press the button. Your settings will help fine-tune the Fine, Tired and Fried presets.</li>
+      </ol>
+      <div class="fb-card">
+        <div class="fb-tired">
+          <div class="row"><label for="fbTired">How tired are you right now?</label><output id="fbTiredOut"></output></div>
+          <input type="range" id="fbTired" min="0" max="10" step="1" value="5">
+          <div class="fb-scale"><span>0 · wide awake</span><span>5 · tired</span><span>10 · fried</span></div>
+        </div>
+        <label class="fb-field">Name or initials <span style="color:var(--muted)">(optional)</span><input id="fbName" maxlength="60" autocomplete="off"></label>
+        <label class="fb-field">Anything else you noticed? <span style="color:var(--muted)">(optional)</span><textarea id="fbNote" maxlength="1000" placeholder="e.g. the gradient helped, the ruler was distracting…"></textarea></label>
+        <button class="btn primary fb-send" id="fbSend">Send settings to developer</button>
+        <p class="fb-status" id="fbStatus"></p>
+        <textarea class="fb-csv" id="fbCsv" readonly></textarea>
+        <details class="fb-what"><summary>What gets sent?</summary>
+          <p>Your current reading settings (font, size, spacings, line width, background, emphasis and focus options), your tiredness rating, the last preset you clicked, how many changes you made, minutes on the page, whether you read a PDF, the sample or pasted text, your screen width, and your optional name and note. <b>Nothing from the paper itself is sent</b>: no text and no file name.</p>
+        </details>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div class="shade" id="shTop"></div><div class="shade" id="shBot"></div>
@@ -449,6 +500,12 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 const docEl = $('#doc');
 
 // ---------- settings ----------
+// ---------- feedback endpoint (Google Apps Script web app URL) ----------
+const FEEDBACK_URL = '';
+const TRACK = {preset: 'none', changes: 0, source: 'none', start: Date.now(),
+  session: Math.random().toString(36).slice(2, 10)};
+function fbDirty() {}
+
 const DEFAULTS = {font:'Literata', size:18, lh:1.6, ls:0, ws:0, measure:68, theme:'white', bold:0, gradient:false, tint:false,
   focus:false, ruler:false, skim:false, acronyms:true, hideRefs:true, hideEq:false};
 const PRESETS = {
@@ -489,6 +546,7 @@ function applyStyle() {
 }
 
 function set(k, v, rerender) {
+  TRACK.changes++; fbDirty();
   S[k] = v; save(); syncControls(); applyStyle();
   if (rerender || MARKUP_KEYS.has(k)) render(); else schedulePaint();
 }
@@ -498,7 +556,7 @@ $$('[data-k]').forEach(el => el.addEventListener('input', () => {
   set(k, el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value);
 }));
 $$('.sw').forEach(b => b.addEventListener('click', () => set('theme', b.dataset.theme)));
-$$('[data-preset]').forEach(b => b.addEventListener('click', () => { S = {...PRESETS[b.dataset.preset]}; save(); syncControls(); applyStyle(); render(); }));
+$$('[data-preset]').forEach(b => b.addEventListener('click', () => { TRACK.preset = b.dataset.preset; TRACK.changes++; fbDirty(); S = {...PRESETS[b.dataset.preset]}; save(); syncControls(); applyStyle(); render(); }));
 
 // ---------- document state ----------
 let DOC = null; // {name, blocks, acr}
@@ -684,7 +742,8 @@ function status(msg, ms) {
   const s = $('#status'); s.textContent = msg; s.classList.toggle('show', !!msg);
   if (ms) setTimeout(() => s.classList.remove('show'), ms);
 }
-function loadBlocks(name, blocks) {
+function loadBlocks(name, blocks, source) {
+  TRACK.source = source || 'pdf';
   DOC = {name, blocks, acr: findAcronyms(blocks)};
   $('#docName').textContent = name;
   docEl.querySelectorAll('.cur').forEach(b => b.classList.remove('cur'));
@@ -740,7 +799,7 @@ $('#pasteGo').onclick = () => {
     return {type: 'p', text: p};
   });
   $('#modal').classList.remove('show');
-  loadBlocks('Pasted text', blocks);
+  loadBlocks('Pasted text', blocks, 'paste');
 };
 
 // sample
@@ -766,7 +825,65 @@ const SAMPLE = [
   {type:'ref', text:'[1] A. Person, “A first reference,” Opt. Lett. 12, 345 (2020).'},
   {type:'ref', text:'[2] B. Person and C. Person, “A second reference,” APL Photonics 5, 1 (2021).'},
 ];
-$('#sampleBtn').onclick = () => loadBlocks('Sample paper', SAMPLE);
+$('#sampleBtn').onclick = () => loadBlocks('Sample paper', SAMPLE, 'sample');
+
+// ---------- feedback ----------
+const TIRED_WORDS = ['wide awake','fresh','fine','okay','a bit tired','tired','pretty tired','very tired','exhausted','nearly fried','completely fried'];
+const fbT = $('#fbTired');
+const fbTOut = () => $('#fbTiredOut').textContent = fbT.value + ' · ' + TIRED_WORDS[+fbT.value];
+fbT.addEventListener('input', () => { fbTOut(); fbDirty(); }); fbTOut();
+$('#fbJump').onclick = () => $('#feedback').scrollIntoView({behavior: 'smooth'});
+
+const FB_KEYS = Object.keys(DEFAULTS);
+function collect() {
+  const row = {
+    submitted_at: new Date().toISOString(),
+    session_id: TRACK.session,
+    tiredness: +fbT.value,
+  };
+  for (const k of FB_KEYS) row[k] = typeof S[k] === 'boolean' ? (S[k] ? 1 : 0) : S[k];
+  Object.assign(row, {
+    last_preset: TRACK.preset,
+    setting_changes: TRACK.changes,
+    minutes_on_page: Math.round((Date.now() - TRACK.start) / 6000) / 10,
+    content: TRACK.source,
+    viewport_width: innerWidth,
+    touch_device: matchMedia('(pointer: coarse)').matches ? 1 : 0,
+    name: $('#fbName').value.trim(),
+    note: $('#fbNote').value.trim(),
+    app_version: 'v2',
+  });
+  return row;
+}
+const csvCell = v => { const t = String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const toCSV = r => Object.keys(r).join(',') + '\n' + Object.values(r).map(csvCell).join(',');
+
+function fbMsg(text, cls) { const el = $('#fbStatus'); el.textContent = text; el.className = 'fb-status ' + (cls || ''); }
+function showCsv(row) { const t = $('#fbCsv'); t.value = toCSV(row); t.style.display = 'block'; t.select(); }
+let fbSent = false;
+fbDirty = function () {
+  if (!fbSent) return;
+  fbSent = false; const b = $('#fbSend'); b.disabled = false; b.textContent = 'Send updated settings'; fbMsg('');
+};
+
+$('#fbSend').onclick = async () => {
+  const row = collect(), b = $('#fbSend');
+  if (!/^https:\/\//.test(FEEDBACK_URL)) {
+    fbMsg('Sending isn’t set up yet. Here are your settings as CSV, so you can copy them and send them manually:', 'err');
+    showCsv(row); return;
+  }
+  b.disabled = true; b.textContent = 'Sending…'; fbMsg('');
+  try {
+    await fetch(FEEDBACK_URL, {method: 'POST', mode: 'no-cors', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify(row)});
+    fbSent = true; b.textContent = 'Sent ✓';
+    $('#fbCsv').style.display = 'none';
+    fbMsg('Thank you! Your settings were sent. Feel free to keep experimenting: if you change anything, you can send again.', 'ok');
+  } catch (e) {
+    b.disabled = false; b.textContent = 'Try again';
+    fbMsg('Couldn’t reach the server (maybe you’re offline). Here is the CSV so nothing is lost:', 'err');
+    showCsv(row);
+  }
+};
 
 syncControls(); applyStyle();
 </script>

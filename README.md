@@ -14,6 +14,13 @@ Drop in a PDF and it gets reflowed into one adjustable column:
 
 The PDF is processed entirely in your browser and is never uploaded.
 
+## Feedback (prototype testing)
+The bottom of the page asks testers to tune the settings until reading feels comfortable, rate how tired they are (0–10), and press **Send settings to developer**. Each submission becomes one row in a Google Sheet (download as CSV). No paper text or file names are sent. The data will be used to fine-tune the Fine / Tired / Fried presets.
+
+Collected columns: `submitted_at, session_id, tiredness, font, size, lh, ls, ws, measure, theme, bold, gradient, tint, focus, ruler, skim, acronyms, hideRefs, hideEq, last_preset, setting_changes, minutes_on_page, content, viewport_width, touch_device, name, note, app_version, received_at`
+
+Backend setup: see [`feedback-backend/Code.gs`](feedback-backend/Code.gs). The web-app URL goes in `FEEDBACK_URL` near the top of the main script in `index.html`. Until it's set, the button shows the settings as CSV for testers to copy.
+
 ## Limitations
 - Equations come out garbled (PDFs store math as scattered glyphs), so they can be folded away.
 - Unusual layouts may scramble reading order; scanned PDFs have no text layer.
