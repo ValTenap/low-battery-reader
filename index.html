@@ -145,6 +145,13 @@ body.dragging .overlay{display:flex}
 .fb-what summary{cursor:pointer}
 .fb-what p{font-size:13px;margin:8px 0 0}
 .fb-csv{width:100%;height:70px;margin-top:8px;font:12px/1.4 'JetBrains Mono',monospace;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);padding:8px;display:none}
+.zot-txt{color:var(--muted);font-size:12.5px;line-height:1.45;margin:0 0 10px}
+.zot-dl{display:block;text-align:center;text-decoration:none;padding:8px}
+.zot-steps{margin:10px 0 0;padding-left:18px;font-size:12.5px;line-height:1.5}
+a.btn{text-decoration:none;display:inline-block;color:inherit}
+a.btn.zot-dl{display:block}
+.small a{color:var(--accent)}
+@media (max-width:820px){.zot-top{display:none}}
 .kbd{font:11px Inter,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 </style>
 </head>
@@ -219,12 +226,24 @@ body.dragging .overlay{display:flex}
     <h3>Acronyms found</h3>
     <ul class="gloss" id="gloss"><li class="empty-note">None yet.</li></ul>
   </div>
+  <div class="sec">
+    <h3>Use it in Zotero</h3>
+    <p class="zot-txt">Open any paper in your Zotero library with these same settings, offline.</p>
+    <a class="btn primary zot-dl" href="zotero/low-battery-reader.xpi" download="low-battery-reader.xpi">Download the Zotero plugin</a>
+    <ol class="zot-steps">
+      <li>In Zotero, open <b>Tools → Plugins</b>.</li>
+      <li>Drag the downloaded <b>.xpi</b> file onto that window.</li>
+      <li>Right-click a paper → <b>Open in Low-Battery Reader</b>, or press <b>Aa</b> in the PDF reader.</li>
+    </ol>
+    <p class="zot-txt" style="margin-top:6px">For Zotero 7 and 8. Updates install automatically.</p>
+  </div>
 </aside>
 
 <main class="main">
   <div class="top">
     <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
     <span class="name" id="docName">No paper open</span>
+    <a class="btn zot-top" href="zotero/low-battery-reader.xpi" download="low-battery-reader.xpi">Zotero plugin</a>
     <button class="btn" id="fbJump">Give feedback</button>
     <button class="btn" id="pasteBtn">Paste text</button>
     <button class="btn primary" id="openBtn">Open PDF</button>
@@ -241,7 +260,8 @@ body.dragging .overlay{display:flex}
           <button class="btn" id="sampleBtn">Try a sample</button>
         </div>
       </div>
-      <p class="small">Your PDF stays on your device: it is read in this page and never uploaded.<br>Works best on text-based PDFs (arXiv, journal downloads). Scanned PDFs have no text to extract.</p>
+      <p class="small">Use Zotero? <a href="zotero/low-battery-reader.xpi" download="low-battery-reader.xpi">Get the Zotero plugin</a> to open papers from your library directly.</p>
+      <p class="small" style="margin-top:8px">Your PDF stays on your device: it is read in this page and never uploaded.<br>Works best on text-based PDFs (arXiv, journal downloads). Scanned PDFs have no text to extract.</p>
     </div>
   </article>
 
