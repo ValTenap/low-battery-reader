@@ -181,6 +181,15 @@ body.rsvp-open{overflow:hidden}
 .rsvp-wpm{min-width:70px;text-align:center;font-variant-numeric:tabular-nums;font-size:13.5px}
 .rsvp-help{color:var(--muted);font-size:12px;margin:14px 0 0}
 .rsvp-start{display:block;width:100%;margin:2px 0 12px;padding:8px}
+/* "you stopped here" marker and resume banner */
+#doc .w.stop-here{position:relative;background:color-mix(in srgb,var(--accent) 26%,transparent);border-radius:4px;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 26%,transparent)}
+#doc .w.stop-here::before{content:'📍 You stopped here';position:absolute;left:-2px;bottom:calc(100% + 6px);font:600 11px/1.6 Inter,sans-serif;letter-spacing:0;word-spacing:0;white-space:nowrap;background:var(--accent);color:var(--bg);padding:1px 8px;border-radius:999px;pointer-events:none;z-index:5}
+#doc .w.stop-here.flash{animation:lbr-flash 1.2s ease 2}
+@keyframes lbr-flash{50%{background:color-mix(in srgb,var(--accent) 60%,transparent)}}
+.resume{display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:var(--measure);margin:18px auto 0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 9%,var(--bg));border-radius:12px;font:14px/1.4 Inter,sans-serif}
+.resume[hidden]{display:none}
+.resume-text{flex:1;min-width:180px}
+.resume-x{padding:6px 9px}
 .kbd{font:11px Inter,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 </style>
 </head>
@@ -241,6 +250,7 @@ body.rsvp-open{overflow:hidden}
     <button class="btn primary rsvp-start rsvp-open-btn">▶ One word at a time</button>
     <div class="slider"><div class="row"><label>Word speed</label><output data-o="rsvpWpm"></output></div><input type="range" data-k="rsvpWpm" min="100" max="700" step="25"></div>
     <div class="slider"><div class="row"><label>Words per flash</label><output data-o="rsvpChunk"></output></div><input type="range" data-k="rsvpChunk" min="1" max="3" step="1"></div>
+    <p class="zot-txt" style="margin:0 0 12px">📍 Your place is saved when you exit, or <b>Shift+click</b> any word to mark it.</p>
 
   </div>
 
@@ -284,6 +294,12 @@ body.rsvp-open{overflow:hidden}
     <button class="btn primary" id="openBtn">Open PDF</button>
     <input type="file" id="file" accept="application/pdf,.pdf" hidden>
     <div class="progress" id="progress"></div>
+  </div>
+  <div class="resume" id="resume" hidden>
+    <span class="resume-pin">📍</span><span id="resumeText" class="resume-text"></span>
+    <button class="btn primary" id="resumeJump">Jump there</button>
+    <button class="btn" id="resumeWord">▶ Continue in one-word mode</button>
+    <button class="btn resume-x" id="resumeClose" title="Dismiss">✕</button>
   </div>
   <article id="doc">
     <div class="welcome" id="welcome">
@@ -331,6 +347,24 @@ body.rsvp-open{overflow:hidden}
 </main>
 
 <div class="shade" id="shTop"></div><div class="shade" id="shBot"></div>
+<div class="rsvp" id="rsvp">
+  <div class="rsvp-top"><span class="rsvp-sec"></span><span class="rsvp-pct"></span><button class="btn rsvp-x" data-a="close" title="Exit (Esc)">✕ Exit</button></div>
+  <div class="rsvp-stage" title="Click to play or pause">
+    <div class="rsvp-tick"></div>
+    <div class="rsvp-word"><span class="ra"></span><span class="rp"></span><span class="rb"></span></div>
+    <div class="rsvp-tick"></div>
+  </div>
+  <div class="rsvp-ctx"></div>
+  <div class="rsvp-bar"><div></div></div>
+  <div class="rsvp-ctrl">
+    <button class="btn" data-a="back" title="Back a sentence (↑)">⟲ Sentence</button>
+    <button class="btn" data-a="prev" title="Previous word (←)">‹</button>
+    <button class="btn primary rsvp-play" data-a="play">Play</button>
+    <button class="btn" data-a="next" title="Next word (→)">›</button>
+    <span class="rsvp-speed"><button class="btn" data-a="slower" title="Slower (−)">−</button><span class="rsvp-wpm"></span><button class="btn" data-a="faster" title="Faster (+)">+</button></span>
+  </div>
+  <p class="rsvp-help">Space play/pause · ← → word · ↑ back a sentence · + − speed · Esc exit · your place is saved when you exit</p>
+</div>
 <div class="overlay">Drop the PDF to open it</div>
 <div class="status" id="status"></div>
 <div class="modal" id="modal"><div class="box">
@@ -648,7 +682,9 @@ function wordsHTML(text) {
   }).join('');
 }
 
+let EMIT = [];
 function blockHTML(b, i) {
+  EMIT.push(i);
   const a = `class="blk BTYPE" data-i="${i}"`;
   switch (b.type) {
     case 'title': return `<h1 ${a.replace('BTYPE','')}>${wordsHTML(b.text)}</h1>`;
@@ -694,6 +730,7 @@ function render() {
              {label: '3 · How it ends', idx: con}, {label: '4 · The full paper', idx: rest}].filter(g => g.idx.length);
   }
   let html = '';
+  EMIT = [];
   for (const g of order) {
     if (g.label) html += `<div class="group-label">${g.label}</div>`;
     let refs = '';
@@ -704,9 +741,11 @@ function render() {
     if (refs) html += foldRefs(refs);
   }
   docEl.innerHTML = html;
+  docEl.querySelectorAll('.blk').forEach((el, k) => { if (el.dataset.i === undefined && EMIT[k] !== undefined) el.dataset.i = EMIT[k]; });
   if (curIdx != null) docEl.querySelector(`.blk[data-i="${curIdx}"]`)?.classList.add('cur');
   applyStyle();
   buildOutline();
+  if (typeof POS !== 'undefined') POS.mark();
   schedulePaint();
   onScroll();
 }
@@ -718,6 +757,7 @@ function buildOutline() {
     const sub = /^\d+\.\d+/.test(B[i].text);
     return `<a href="#" data-go="${i}" class="${sub ? 'sub' : ''}">${esc(B[i].text)}</a>`;
   }).join('') : '<span class="empty-note">No section headings found.</span>';
+  $$('#outline a').forEach((a, k) => { if (!a.dataset.go && heads[k] !== undefined) a.dataset.go = heads[k]; });
   const acr = Object.entries(DOC.acr || {});
   $('#gloss').innerHTML = acr.length ? acr.map(([k, v]) => `<li><b>${esc(k)}</b>${esc(v)}</li>`).join('') : '<li class="empty-note">None detected.</li>';
 }
@@ -808,6 +848,7 @@ function loadBlocks(name, blocks, source) {
   $('#docName').textContent = name;
   docEl.querySelectorAll('.cur').forEach(b => b.classList.remove('cur'));
   render(); scrollTo(0, 0);
+  if (typeof POS !== 'undefined') POS.offerResume();
   if (S.focus) setCur(docEl.querySelector('.blk'));
 }
 
@@ -888,6 +929,100 @@ const SAMPLE = [
 ];
 $('#sampleBtn').onclick = () => loadBlocks('Sample paper', SAMPLE, 'sample');
 
+// ---------- reading position: "you stopped here" ----------
+const POS = (() => {
+  const PREF = 'extensions.lowbattery.positions', LS = 'lbr-positions', MAX = 300;
+  const hasZ = () => typeof Z !== 'undefined' && Z;
+  function key() {
+    const id = typeof ARGS !== 'undefined' && ARGS && ARGS.meta && ARGS.meta.itemID;
+    return id ? 'z' + id : 'f:' + (DOC ? DOC.name : '') + '|' + (DOC ? DOC.blocks.length : 0);
+  }
+  function all() {
+    try { const raw = hasZ() ? Z.Prefs.get(PREF, true) : localStorage.getItem(LS); return raw ? JSON.parse(raw) : {}; }
+    catch (e) { return {}; }
+  }
+  function write(map) {
+    const keys = Object.keys(map).sort((a, b) => (map[b].at || 0) - (map[a].at || 0));
+    keys.slice(MAX).forEach(k => delete map[k]);
+    try { const v = JSON.stringify(map); if (hasZ()) Z.Prefs.set(PREF, v, true); else localStorage.setItem(LS, v); } catch (e) {}
+  }
+  function get() { return DOC ? all()[key()] || null : null; }
+  function save(pos) {
+    if (!DOC) return;
+    const map = all(); map[key()] = {...pos, at: Date.now()}; write(map);
+    mark();
+  }
+  function clear() { const map = all(); delete map[key()]; write(map); mark(); }
+
+  function wordEl(pos) {
+    const b = docEl.querySelector(`.blk[data-i="${pos.blk}"]`);
+    if (!b) return null;
+    const ws = b.querySelectorAll('.w');
+    return ws.length ? ws[Math.min(pos.wi || 0, ws.length - 1)] : b;
+  }
+  function mark() {
+    docEl.querySelectorAll('.stop-here').forEach(e => e.classList.remove('stop-here'));
+    const p = get(); if (!p) return null;
+    const w = wordEl(p); if (w) w.classList.add('stop-here');
+    return w;
+  }
+  function jump() {
+    const w = mark(); if (!w) return;
+    w.scrollIntoView({block: 'center', behavior: 'smooth'});
+    const b = w.closest('.blk'); if (b && S.focus) setCur(b);
+    w.classList.remove('flash'); void w.offsetWidth; w.classList.add('flash');
+  }
+  function sectionOf(blk) {
+    for (let k = blk; k >= 0; k--) if (DOC.blocks[k] && DOC.blocks[k].type === 'h') return DOC.blocks[k].text;
+    return '';
+  }
+
+  // banner when reopening a paper
+  function ago(ms) {
+    const m = Math.round(ms / 60000);
+    if (m < 2) return 'just now'; if (m < 60) return m + ' minutes ago';
+    const h = Math.round(m / 60); if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    const d = Math.round(h / 24); return d + (d === 1 ? ' day ago' : ' days ago');
+  }
+  function offerResume() {
+    const bar = $('#resume'); if (!bar) return;
+    const p = get();
+    if (!p || (p.blk <= 1 && !p.wi)) { bar.hidden = true; return; }
+    const sec = p.section ? ' in “' + p.section.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.)\s+/, '') + '”' : '';
+    $('#resumeText').textContent = 'You stopped at ' + Math.round((p.pct || 0) * 100) + '%' + sec + ', ' + ago(Date.now() - p.at) + '.';
+    bar.hidden = false;
+  }
+  function wire() {
+    $('#resumeJump') && ($('#resumeJump').onclick = () => { $('#resume').hidden = true; jump(); });
+    $('#resumeWord') && ($('#resumeWord').onclick = () => { $('#resume').hidden = true; jump(); RSVP.open({fromPos: true}); });
+    $('#resumeClose') && ($('#resumeClose').onclick = () => { $('#resume').hidden = true; });
+    // Shift+click a word to mark your place
+    docEl.addEventListener('click', e => {
+      if (!e.shiftKey || !DOC) return;
+      const w = e.target.closest('.w'), b = e.target.closest('.blk');
+      if (!w || !b) return;
+      e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges();
+      const wi = [...b.querySelectorAll('.w')].indexOf(w), blk = +b.dataset.i;
+      save({blk, wi, pct: blk / Math.max(1, DOC.blocks.length - 1), section: sectionOf(blk), src: 'manual'});
+      status('Place marked 📍', 1500);
+    });
+    // normal reading: after lingering on a paragraph, move the bookmark forward (never backward)
+    let t = null;
+    addEventListener('scroll', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (!DOC || document.body.classList.contains('rsvp-open')) return;
+        const b = firstVisibleBlock(); if (!b) return;
+        const blk = +b.dataset.i, p = get();
+        if (p && blk <= p.blk) return;
+        save({blk, wi: 0, pct: blk / Math.max(1, DOC.blocks.length - 1), section: sectionOf(blk), src: 'scroll'});
+      }, 6000);
+    }, {passive: true});
+  }
+  return {get, save, clear, mark, jump, offerResume, wire, sectionOf};
+})();
+POS.wire();
+
 // ---------- one word at a time (RSVP) ----------
 // Research: Moussaoui et al. 2025 (J Int Neuropsychol Soc) found that showing one word at a time
 // in the same place improved comprehension for readers with ADHD. See RESEARCH.md.
@@ -896,29 +1031,12 @@ const RSVP = (() => {
   const NOT_END = /^(e\.g|i\.e|et al|fig|figs|eq|eqs|ref|refs|vs|cf|approx|resp|no|vol|pp|ca|sec|ch|al|dr|prof)\.$/i;
 
   function build() {
-    el = document.createElement('div');
-    el.className = 'rsvp'; el.id = 'rsvp';
-    el.innerHTML =
-      '<div class="rsvp-top"><span class="rsvp-sec"></span><span class="rsvp-pct"></span><button class="btn rsvp-x" data-a="close" title="Exit (Esc)">✕ Exit</button></div>' +
-      '<div class="rsvp-stage" data-a="play" title="Click to play or pause">' +
-        '<div class="rsvp-tick"></div>' +
-        '<div class="rsvp-word"><span class="ra"></span><span class="rp"></span><span class="rb"></span></div>' +
-        '<div class="rsvp-tick"></div>' +
-      '</div>' +
-      '<div class="rsvp-ctx"></div>' +
-      '<div class="rsvp-bar"><div></div></div>' +
-      '<div class="rsvp-ctrl">' +
-        '<button class="btn" data-a="back" title="Back a sentence (↑)">⟲ Sentence</button>' +
-        '<button class="btn" data-a="prev" title="Previous word (←)">‹</button>' +
-        '<button class="btn primary rsvp-play" data-a="play">Play</button>' +
-        '<button class="btn" data-a="next" title="Next word (→)">›</button>' +
-        '<span class="rsvp-speed"><button class="btn" data-a="slower" title="Slower (−)">−</button><span class="rsvp-wpm"></span><button class="btn" data-a="faster" title="Faster (+)">+</button></span>' +
-      '</div>' +
-      '<p class="rsvp-help">Space play/pause · ← → word · ↑ back a sentence · + − speed · Esc exit</p>';
-    document.body.appendChild(el);
+    el = document.getElementById('rsvp');
     el.addEventListener('click', e => {
-      const t = e.target.closest('[data-a]'); if (!t) return;
-      act(t.dataset.a);
+      const t = e.target.closest('[data-a]') || e.target.closest('.rsvp-stage'); if (!t) return;
+      // don't leave focus on a button: in Firefox/Zotero, Space would "click" it again on key-up
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      act(t.dataset.a || 'play');
     });
   }
 
@@ -932,19 +1050,21 @@ const RSVP = (() => {
       if (!text) continue;
       if (B.type === 'h' || B.type === 'title') {
         section = B.type === 'h' ? text : section;
-        out.push({w: text, blk: idx, head: true, section, end: 'para', sentStart: true});
+        out.push({w: text, blk: idx, wi: 0, head: true, section, end: 'para', sentStart: true});
         continue;
       }
-      const words = text.split(/\s+/);
+      const raw = B.text.split(/\s+/).filter(Boolean);          // same split as the rendered page
       const n = Math.max(1, S.rsvpChunk | 0);
       let sentStart = true;
-      for (let k = 0; k < words.length; k += n) {
-        const group = words.slice(k, k + n), last = group[group.length - 1];
+      for (let k = 0; k < raw.length; k += n) {
+        const group = raw.slice(k, k + n).map(w => typeof clean === 'function' ? clean(w) : w).filter(Boolean);
+        if (!group.length) continue;
+        const last = group[group.length - 1];
         let end = null;
-        if (k + n >= words.length) end = 'para';
+        if (k + n >= raw.length) end = 'para';
         else if (/[.!?]["')\]]?$/.test(last) && !NOT_END.test(last)) end = 'sent';
         else if (/[,;:]["')\]]?$/.test(last)) end = 'comma';
-        out.push({w: group.join(' '), blk: idx, head: false, section, end, sentStart, cap: B.type === 'cap'});
+        out.push({w: group.join(' '), blk: idx, wi: k, head: false, section, end, sentStart, cap: B.type === 'cap'});
         sentStart = end === 'sent' || end === 'para';
       }
     }
@@ -1009,10 +1129,10 @@ const RSVP = (() => {
     if (!playing) return;
     show();
     const t = tokens[i];
-    timer = setTimeout(() => {
+    timer = setTimeout(() => safe(() => {
       if (i < tokens.length - 1) { i++; tick(); }
       else { pause(); }
-    }, delay(t));
+    }), delay(t));
   }
 
   function play() {
@@ -1047,19 +1167,45 @@ const RSVP = (() => {
     if (!el || !el.classList.contains('on')) return;
     const k = e.key;
     const map = {' ': 'play', 'Spacebar': 'play', 'ArrowLeft': 'prev', 'ArrowRight': 'next', 'ArrowUp': 'back', 'Escape': 'close', '+': 'faster', '=': 'faster', '-': 'slower', '_': 'slower'};
-    if (map[k]) { e.preventDefault(); e.stopPropagation(); act(map[k]); }
+    if (map[k]) { e.preventDefault(); e.stopPropagation(); safe(() => act(map[k])); }
+  }
+  function onKeyUp(e) {
+    if (!el || !el.classList.contains('on')) return;
+    if ([' ', 'Spacebar', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'Escape'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); }
   }
   document.addEventListener('keydown', onKey, true);
+  document.addEventListener('keyup', onKeyUp, true);
 
-  function open() {
+  function safe(fn) {
+    try { return fn(); }
+    catch (err) {
+      console.error(err);
+      try { if (typeof Z !== 'undefined' && Z) Z.logError(err); } catch (e) {}
+      status('One-word mode error: ' + (err && err.message || err), 12000);
+    }
+  }
+
+  function open(opts) {
+    opts = opts || {};
     if (!DOC) { status('Open a paper first.', 2500); return; }
     if (!el) build();
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     tokens = makeTokens();
     if (!tokens.length) { status('No readable text to show.', 2500); return; }
-    // start from the spotlighted paragraph, or the first paragraph on screen
-    const start = docEl.querySelector('.blk.cur') || firstVisibleBlock();
-    const si = start ? tokens.findIndex(t => t.blk === +start.dataset.i) : 0;
-    i = si > 0 ? si : 0;
+    i = 0;
+    const pos = POS.get(), marker = docEl.querySelector('.stop-here');
+    const markerOnScreen = marker && (() => { const r = marker.getBoundingClientRect(); return r.bottom > 60 && r.top < innerHeight; })();
+    if (pos && (opts.fromPos || markerOnScreen)) {
+      let best = -1;
+      tokens.forEach((t, k) => { if (t.blk === pos.blk && t.wi <= (pos.wi || 0)) best = k; });
+      if (best < 0) best = tokens.findIndex(t => t.blk >= pos.blk);
+      i = Math.max(0, best);
+    } else {
+      // start from the spotlighted paragraph, or the first paragraph on screen
+      const start = (S.focus && docEl.querySelector('.blk.cur')) || firstVisibleBlock();
+      const si = start ? tokens.findIndex(t => t.blk === +start.dataset.i) : 0;
+      i = si > 0 ? si : 0;
+    }
     el.style.setProperty('--rsvp-size', 'calc(' + S.size + 'px * 2.3)');
     el.classList.add('on'); document.body.classList.add('rsvp-open');
     openedAt = Date.now();
@@ -1071,13 +1217,19 @@ const RSVP = (() => {
     el.classList.remove('on'); document.body.classList.remove('rsvp-open');
     if (typeof TRACK !== 'undefined') { TRACK.rsvpSec = (TRACK.rsvpSec || 0) + Math.round((Date.now() - openedAt) / 1000); }
     const t = tokens[i];
-    const blk = t && docEl.querySelector(`.blk[data-i="${t.blk}"]`);
-    if (blk) { if (S.focus) setCur(blk); blk.scrollIntoView({block: 'center'}); }
+    if (t) {
+      POS.save({blk: t.blk, wi: t.wi, pct: i / Math.max(1, tokens.length - 1), section: t.section || POS.sectionOf(t.blk), src: 'word'});
+      const w = docEl.querySelector('.stop-here');
+      const blk = docEl.querySelector(`.blk[data-i="${t.blk}"]`);
+      if (blk && S.focus) setCur(blk);
+      (w || blk) && (w || blk).scrollIntoView({block: 'center'});
+      if (w) { w.classList.remove('flash'); void w.offsetWidth; w.classList.add('flash'); }
+    }
   }
 
-  return {open, close};
+  return {open: o => safe(() => open(o)), close: () => safe(close)};
 })();
-$$('.rsvp-open-btn').forEach(b => b.addEventListener('click', () => RSVP.open()));
+$$('.rsvp-open-btn').forEach(b => b.addEventListener('click', () => { b.blur(); RSVP.open(); }));
 
 // ---------- feedback ----------
 const TIRED_WORDS = ['wide awake','fresh','fine','okay','a bit tired','tired','pretty tired','very tired','exhausted','nearly fried','completely fried'];
