@@ -24,15 +24,15 @@
 
   <div class="sec">
     <h3>Text</h3>
-    <div class="slider"><div class="row"><label for="font">Font</label></div>
-      <select id="font" data-k="font">
-        <option value="Literata">Literata (serif)</option>
-        <option value="Inter">Inter (sans)</option>
-        <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
-        <option value="Lexend">Lexend</option>
-        <option value="OpenDyslexic">OpenDyslexic</option>
-        <option value="Comic Neue">Comic Neue</option>
-      </select>
+    <div class="slider"><div class="row"><label>Font</label></div>
+      <div class="font-list" id="fontList" role="radiogroup" aria-label="Font">
+        <button class="font-opt" data-font="Literata" role="radio" style="font-family:'Literata'">Literata<small>serif</small></button>
+        <button class="font-opt" data-font="Inter" role="radio" style="font-family:'Inter'">Inter<small>sans</small></button>
+        <button class="font-opt" data-font="Atkinson Hyperlegible" role="radio" style="font-family:'Atkinson Hyperlegible'">Atkinson<small>hyperlegible</small></button>
+        <button class="font-opt" data-font="Lexend" role="radio" style="font-family:'Lexend'">Lexend<small>wide sans</small></button>
+        <button class="font-opt" data-font="OpenDyslexic" role="radio" style="font-family:'OpenDyslexic'">OpenDyslexic<small>dyslexia</small></button>
+        <button class="font-opt" data-font="Comic Neue" role="radio" style="font-family:'Comic Neue'">Comic Neue<small>casual</small></button>
+      </div>
     </div>
     <div class="slider"><div class="row"><label>Size</label><output data-o="size"></output></div><input type="range" data-k="size" min="14" max="30" step="1"/></div>
     <div class="slider"><div class="row"><label>Line spacing</label><output data-o="lh"></output></div><input type="range" data-k="lh" min="1.2" max="2.6" step="0.05"/></div>

@@ -15,7 +15,7 @@ Drop in a PDF and it gets reflowed into one adjustable column:
 The PDF is processed entirely in your browser and is never uploaded.
 
 ## Zotero plugin
-**[Download Low-Battery Reader for Zotero](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader.xpi)** (latest, currently v0.1.1) (Zotero 7 and 8)
+**[Download Low-Battery Reader for Zotero](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader.xpi)** (latest, currently v0.1.2) (Zotero 7 and 8)
 
 Install: in Zotero go to **Tools → Plugins**, then drag the `.xpi` file onto that window (or use the gear menu → *Install Plugin From File…*).
 

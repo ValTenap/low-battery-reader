@@ -28,6 +28,7 @@ function syncControls() {
   });
   $$('[data-o]').forEach(o => o.textContent = fmt[o.dataset.o](S[o.dataset.o]));
   $$('.sw').forEach(b => b.classList.toggle('on', b.dataset.theme === S.theme));
+  $$('.font-opt').forEach(b => { const on = b.dataset.font === S.font; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
   $$('[data-preset]').forEach(b => b.classList.toggle('on', Object.keys(DEFAULTS).every(k => PRESETS[b.dataset.preset][k] === S[k])));
 }
 
@@ -56,6 +57,7 @@ $$('[data-k]').forEach(el => el.addEventListener('input', () => {
   set(k, el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value);
 }));
 $$('.sw').forEach(b => b.addEventListener('click', () => set('theme', b.dataset.theme)));
+$$('.font-opt').forEach(b => b.addEventListener('click', () => set('font', b.dataset.font)));
 $$('[data-preset]').forEach(b => b.addEventListener('click', () => { S = {...PRESETS[b.dataset.preset]}; save(); syncControls(); applyStyle(); render(); }));
 
 // ---------- document state ----------
