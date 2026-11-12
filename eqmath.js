@@ -47,7 +47,7 @@ const EQTEX = (() => {
     const n = fontNames[it.f] || '';
     if (/CMEX|esint/i.test(n)) return 'xc';                                       // code-based extension font
     if (/MathExtension|txex|pxex|Extension|Euclid.*Extra/i.test(n)) return 'xu'; // unicode extension font
-    if (it.ext && !n) return /[\u0000-\u001F]/.test(it.s) || /^[PQRSTXYZpqrst]$/.test(it.s.trim()) ? 'xc' : 'xu';
+    if (it.ext && (!n || /Mathematica/i.test(n))) return /[\u0000-\u001F]/.test(it.s) || /^[PQRSTXYZpqrst]$/.test(it.s.trim()) ? 'xc' : 'xu';
     if ((/Bold|CMBX|BX\d/i.test(n) || /\.B(\+|$)/.test(n)) && !/Italic/i.test(n)) return 'bf';
     if (/CMSY|MathSymbols|txsy|pxsy|Symbol/i.test(n)) return 'sy';
     if (/CMMI|MathItalic|txmi|pxmi|Italic|Oblique/i.test(n) || /\.I(\+|$)/.test(n)) return 'mi';
@@ -107,8 +107,30 @@ const EQTEX = (() => {
     });
     return out;
   }
+  function splitInterleaved(list) {
+    const plain = list.filter(i => !i.kind && i.s && i.s.trim());
+    const out = [];
+    list.forEach(i => {
+      if (i.kind || !i.s || i.s.length < 2) { out.push(i); return; }
+      const n = i.s.length, cw = i.w / n;
+      const cuts = new Map();
+      plain.forEach(o => {
+        if (o === i) return;
+        const cx = o.x + Math.min(o.w, cw) / 2;
+        if (cx > i.x + 0.6 * cw && cx < i.x + i.w - 0.4 * cw && Math.abs(o.y - i.y) < (o.h >= 0.86 * i.h ? 0.45 : 1.2) * i.h) { const c = Math.max(1, Math.min(n - 1, Math.round((o.x - i.x) / cw))); cuts.set(c, Math.max(cuts.get(c) || 0, o.x + Math.min(o.w, 2 * cw) * 0.6)); }
+      });
+      if (!cuts.size) { out.push(i); return; }
+      let prev = 0, after = -Infinity;
+      [...cuts.keys()].sort((a, b) => a - b).concat([n]).forEach(c => {
+        const piece = i.s.slice(prev, c), lead = piece.length - piece.trimStart().length;
+        if (piece.trim()) { const x = Math.max(i.x + (prev + lead) * cw, after); out.push({...i, s: piece.trim(), x, w: Math.max(0.5 * cw, i.x + c * cw - x)}); }
+        after = cuts.get(c) || after; prev = c;
+      });
+    });
+    return out;
+  }
   function tokenize(list, flags) {
-    return splitAccents(list).filter(i => i.kind || i.s.trim()).map(i => {
+    return splitAccents(splitInterleaved(list)).filter(i => i.kind || i.s.trim()).map(i => {
       if (i.kind) return i;                                      // already built (fraction, matrix…)
       const f = fam(i), c = i.s.trim();
       const t = {it: i, x: i.x, x2: i.x + i.w, y: i.y, h: i.h, s: i.s, f, sub: [], sup: [], kind: 'text'};
@@ -127,7 +149,7 @@ const EQTEX = (() => {
     if (depth > 8) { why(flags, 'depth'); return ''; }
     const plain = toks.filter(t => t.kind === 'text' && !isExt(t.f));
     const hist = {};
-    (plain.length ? plain : toks).forEach(t => { const k = Math.round(t.h * 2) / 2; hist[k] = (hist[k] || 0) + Math.max(1, (t.s || 'x').trim().length); });
+    (plain.length ? plain : toks).forEach(t => { const k = Math.round(t.h * 2) / 2; hist[k] = (hist[k] || 0) + Math.min(2, Math.max(1, (t.s || 'x').trim().length)); });
     const sizes = Object.entries(hist).map(([k, v]) => [+k, v]);
     const total = sizes.reduce((a, b) => a + b[1], 0);
     const main = Math.max(...sizes.filter(([, v]) => v >= total * 0.2).map(([k]) => k));
@@ -155,9 +177,20 @@ const EQTEX = (() => {
       const minx = Math.min(...toks.map(t => t.x)), maxx = Math.max(...toks.map(t => t.x2));
       const ys = toks.map(t => t.y), miny = Math.min(...ys), maxy = Math.max(...ys);
       let rs = rules.filter(r => !r.taken && r.x1 >= minx - 3 && r.x2 <= maxx + 3 && r.y > miny - 1.5 * main && r.y < maxy + 1.5 * main);
+      rs = rs.filter((r, k) => !rs.some((q, j) => j < k && Math.abs(q.y - r.y) < 1.2 && Math.abs(q.x1 - r.x1) < 1.5 && Math.abs(q.x2 - r.x2) < 1.5));
       toks.filter(t => t.kind === 'sqrt' && !t.rule).forEach(sq => {
         const r = rs.find(r => !r.taken && Math.abs(r.x1 - sq.x2) < 2.5 && r.y > sq.y - 2.2 * main);
         if (r) { r.taken = true; sq.rule = r; }
+      });
+      rs.filter(r => !r.taken).forEach(r => {
+        const inside = t => { const cx = (t.x + t.x2) / 2; return cx >= r.x1 - 0.5 && cx <= r.x2 + 0.5; };
+        const below = toks.filter(t => inside(t) && yMid(t) < r.y && r.y - yMid(t) < 1.4 * main);
+        const above = toks.filter(t => inside(t) && yMid(t) > r.y && yMid(t) - r.y < 2.6 * main);
+        if (!below.length || above.length) return;
+        const left = toks.filter(t => t.x2 <= r.x1 + 0.5 && Math.abs(yMid(t) - r.y) < 2 * main).sort((a, b) => b.x2 - a.x2)[0];
+        if (left && r.x1 - left.x2 < 0.35 * main) return;
+        r.taken = true;
+        toks.push({kind: 'sqrt', x: r.x1 - 0.6 * main, x2: r.x1, y: r.y - main, h: main, f: 'r', s: '√', sub: [], sup: [], rule: r, drawn: true});
       });
       rs = rs.filter(r => !r.taken).sort((a, b) => (a.x2 - a.x1) - (b.x2 - b.x1));
       for (const r of rs) {
@@ -166,8 +199,8 @@ const EQTEX = (() => {
         const below = toks.filter(t => inside(t) && yMid(t) < r.y && r.y - yMid(t) < 2.6 * main);
         if (!above.length || !below.length) continue;
         r.taken = true;
-        const small = median(above.concat(below).filter(t => t.kind === 'text').map(t => t.h)) < main * 0.86;
-        const fr = {kind: 'frac', x: r.x1, x2: r.x2, y: r.y, h: main, num: above, den: below, sub: [], sup: [], small, f: 'r', s: ''};
+        const tf = Math.max(0, ...above.concat(below).filter(t => t.kind === 'text').map(t => t.h)) < main * 0.86;
+        const fr = {kind: 'frac', x: r.x1, x2: r.x2, y: r.y, h: main, num: above, den: below, sub: [], sup: [], small: tf, tf, f: 'r', s: ''};
         toks = toks.filter(t => !above.includes(t) && !below.includes(t)); toks.push(fr);
       }
       toks.filter(t => t.kind === 'sqrt' && t.rule && !t.rad).forEach(sq => {
@@ -289,7 +322,7 @@ const EQTEX = (() => {
     const scripts = t => (t.sub.length ? '_{' + row(t.sub, depth + 1, flags, rules) + '}' : '') + (t.sup.length ? '^{' + row(t.sup, depth + 1, flags, rules) + '}' : '');
     const emitTok = t => {
       switch (t.kind) {
-        case 'frac': return ((t.small || t.tiny) ? '\\tfrac{' : '\\frac{') + row(t.num, depth + 1, flags, rules) + '}{' + row(t.den, depth + 1, flags, rules) + '}' + scripts(t);
+        case 'frac': return ((t.tf || t.tiny) ? '\\tfrac{' : '\\frac{') + row(t.num, depth + 1, flags, rules) + '}{' + row(t.den, depth + 1, flags, rules) + '}' + scripts(t);
         case 'mat': {
           const body = t.rows.map(r => r.map(cell => row(cell, depth + 1, flags, rules)).join(' & ')).join(' \\\\ ');
           return '\\begin{' + t.env + '} ' + body + ' \\end{' + t.env + '}' + scripts(t) + ' ';
@@ -357,6 +390,7 @@ const EQTEX = (() => {
     const flags = {bad: 0, low: 0};
     const allItems = items;
     rules = (rules || []).concat(items.filter(i => i.overline).map(i => ({x1: i.x, x2: i.x + i.w, y: i.y + 0.75 * i.h})));
+    rules = rules.filter((r, k) => !rules.some((q, m) => m < k && Math.abs(q.y - r.y) < 0.9 && Math.min(q.x2, r.x2) - Math.max(q.x1, r.x1) > 0.8 * Math.min(q.x2 - q.x1, r.x2 - r.x1)));
     rules.forEach(r => { r.taken = false; });
     items = items.filter(i => i.s && i.s.trim());
     const normal = items.filter(i => !isExt(fam(i)));
@@ -386,13 +420,14 @@ const EQTEX = (() => {
       if (l !== rr) tex = tex.replace(/\\left/g, '').replace(/\\right/g, '');
       return tex;
     }).filter(Boolean);
-    return {rows, ok: flags.bad === 0 && flags.low === 0 && rows.length > 0, why: flags.why || (flags.low ? ['no bar'] : [])};
+    const fixed = rows.map(t => t.replace(/a\\mathrm\{rg\}/g, '\\arg ').replace(/\\mathrm\{a\}rg/g, '\\arg '));
+    return {rows: fixed, ok: flags.bad === 0 && flags.low === 0 && rows.length > 0, why: flags.why || (flags.low ? ['no bar'] : [])};
   }
 
   // thin filled rectangles / horizontal strokes on a page = fraction bars and radical overlines
   async function pageRules(page, OPS, offset) {
     const ol = await page.getOperatorList();
-    const rules = []; let ctm = [1, 0, 0, 1, 0, 0]; const stack = []; let pending = [];
+    const rules = []; let ctm = [1, 0, 0, 1, 0, 0]; const stack = []; let pending = [], cur = null;
     const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
     const ap = (x, y) => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]];
     const [ox, oy] = offset || [0, 0];
@@ -404,7 +439,7 @@ const EQTEX = (() => {
       else if (fn === OPS.paintFormXObjectBegin) { stack.push(ctm.slice()); if (a && a[0]) ctm = mul(ctm, a[0]); }
       else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
       else if (fn === OPS.constructPath) {
-        const ops = a[0], args = a[1]; let j = 0, cur = null;
+        const ops = a[0], args = a[1]; let j = 0;
         for (const op of ops) {
           if (op === OPS.rectangle) { const [x, y, w, h] = args.slice(j, j + 4); j += 4; const p1 = ap(x, y), p2 = ap(x + w, y + h); pending.push({x1: Math.min(p1[0], p2[0]), x2: Math.max(p1[0], p2[0]), y1: Math.min(p1[1], p2[1]), y2: Math.max(p1[1], p2[1])}); }
           else if (op === OPS.moveTo) { cur = ap(args[j], args[j + 1]); j += 2; }
@@ -414,8 +449,8 @@ const EQTEX = (() => {
         }
       } else if ([OPS.fill, OPS.eoFill, OPS.stroke, OPS.closeStroke, OPS.fillStroke, OPS.eoFillStroke, OPS.closeFillStroke, OPS.closeEOFillStroke].includes(fn)) {
         for (const r of pending) { const h = r.y2 - r.y1, w = r.x2 - r.x1; if (h < 1.6 && w > 2 && w > h * 4) rules.push({x1: r.x1 - ox, x2: r.x2 - ox, y: (r.y1 + r.y2) / 2 - oy}); }
-        pending = [];
-      } else if (fn === OPS.endPath) pending = [];
+        pending = []; cur = null;
+      } else if (fn === OPS.endPath) { pending = []; cur = null; }
     }
     return rules;
   }

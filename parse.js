@@ -79,8 +79,41 @@ function fixAdvFonts(items) {
   }
 }
 
+// TeX math-italic fonts (e.g. MathTime) whose capital Greek (codes 0–10) come out as digits: Δ shows up as a wide "1"
+const OML_GREEK = {'0': 'Γ', '1': 'Δ', '2': 'Θ', '3': 'Λ', '4': 'Ξ', '5': 'Π', '6': 'Σ', '7': 'Υ', '8': 'Φ', '9': 'Ψ'};
+function fixGreekDigits(items) {
+  const by = {};
+  items.forEach(i => { if (i.f) (by[i.f] = by[i.f] || []).push(i); });
+  for (const f in by) {
+    const its = by[f];
+    if (!its.some(i => /[α-ωϕϑϵ]/.test(i.s))) continue;          // a math-italic font
+    its.forEach(i => {
+      const c = i.s.trim();
+      if (c.length === 1 && OML_GREEK[c] && i.w > 0.62 * i.h) i.s = i.s.replace(c, OML_GREEK[c]);
+      else if (c.length > 1) i.s = i.s.replace(/[0-9](?=[A-Za-zα-ωΑ-Ω])/g, d => OML_GREEK[d]);   // a digit glued to a letter in a math-italic run
+    });
+  }
+}
+
+// Mathematica's "Mathematica2" font draws tall brackets from letter-coded pieces stacked at one x
+const MMA_PIECE = {'i': '⎛', 'j': '⎜', 'k': '⎝', 'y': '⎞', 'z': '⎟', '{': '⎠', 'g': '⎡', 'h': '⎢', 'l': '⎣', 'w': '⎤', 'x': '⎥', '|': '⎦'};
+function fixBracketPieces(items) {
+  const by = {};
+  items.forEach(i => { if (i.f) (by[i.f] = by[i.f] || []).push(i); });
+  for (const f in by) {
+    const its = by[f];
+    if (its.length < 3 || !its.every(i => i.s.trim().length === 1 && MMA_PIECE[i.s.trim()])) continue;
+    const stacked = its.some(a => its.some(b => b !== a && b.s === a.s && Math.abs(b.x - a.x) < 0.5 && Math.abs(b.y - a.y) < 1.2 * a.h));
+    if (!stacked) continue;
+    its.forEach(i => { i.s = MMA_PIECE[i.s.trim()]; i.ext = true; });
+  }
+}
+
 function pageLines(items, W, H, page) {
+  items = items.filter(i => !/^[\s■▪◼□●◆]+$/.test(i.s));   // decorative section bullets (ACS)
+  fixBracketPieces(items);
   fixAdvFonts(items);
+  fixGreekDigits(items);
   markExtFonts(items);
   // big extension glyphs hang below their reported baseline: cluster them by their visual centre
   const yc = it => it.ext || it.overline ? it.y - it.h : it.s.trim() === '√' ? it.y - 0.8 * it.h : it.y;
@@ -89,6 +122,16 @@ function pageLines(items, W, H, page) {
   const hist = {};
   items.forEach(i => { const k = Math.round(i.h * 2) / 2; hist[k] = (hist[k] || 0) + i.s.length; });
   const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
+  // huge lone symbols (section bullets like ■) would swallow neighbouring lines into one row
+  items.forEach(c => { if (!c.ext && c.s.trim().length === 1 && !/\p{L}/u.test(c.s) && c.h > 2.2 * body && !EXT_CHARS.test(c.s.trim())) c.h = body; });
+  // drop caps: one huge letter that starts a paragraph; move it onto the first line beside it
+  items.filter(c => c.s.trim().length === 1 && /\p{L}/u.test(c.s) && c.h > 1.8 * body).forEach(c => {
+    const near = items.filter(j => j !== c && j.h < 1.3 * body && j.x >= c.x + c.w - 1 && j.x < c.x + c.w + 1.5 * body && j.y > c.y - 0.5 * body && j.y < c.y + c.h);
+    if (!near.length) return;
+    const top = near.sort((a, b) => b.y - a.y || a.x - b.x)[0];
+    c.y = top.y; c.h = top.h; c.w = Math.max(0.1, top.x - c.x);
+  });
+  items.sort((a, b) => yc(b) - yc(a) || a.x - b.x);
   const cluster = (list, rows) => {
     for (const it of list) {
       const r = rows[rows.length - 1];
@@ -127,8 +170,22 @@ function pageLines(items, W, H, page) {
   for (let k = Math.floor(N * 0.38); k <= Math.ceil(N * 0.62); k++) if (cov[k] < minV) { minV = cov[k]; minB = k; }
   const side = [...cov.slice(Math.floor(N * .12), Math.floor(N * .33)), ...cov.slice(Math.ceil(N * .67), Math.ceil(N * .88))];
   const sideAvg = side.reduce((a, b) => a + b, 0) / side.length;
-  const twoCol = sideAvg > 4 && minV < 0.3 * sideAvg;
-  const g = (minB + 0.5) / N * W;
+  let twoCol = sideAvg > 4 && minV < 0.3 * sideAvg;
+  let g = (minB + 0.5) / N * W;
+  if (!twoCol) {
+    // a full-width abstract or banner can hide the gutter: look for a vertical gap that many rows share
+    let bestN = 0, bestG = g;
+    for (let k = Math.floor(N * 0.4); k <= Math.ceil(N * 0.6); k++) {
+      const gx = (k + 0.5) / N * W; let n = 0;
+      for (const r of rows) {
+        if (r.items.some(i => i.x < gx - 2 && i.x + i.w > gx + 2)) continue;
+        const l = r.items.filter(i => i.x + i.w <= gx), rt = r.items.filter(i => i.x >= gx);
+        if (l.length && rt.length && Math.min(...rt.map(i => i.x)) - Math.max(...l.map(i => i.x + i.w)) > 0.5 * r.h) n++;
+      }
+      if (n > bestN) { bestN = n; bestG = gx; }
+    }
+    if (bestN >= 6 && bestN >= 0.15 * rows.length) { twoCol = true; g = bestG; }
+  }
 
   const out = []; let L = [], R = [];
   const flush = () => { out.push(...L, ...R); L = []; R = []; };
@@ -169,14 +226,16 @@ function buildBlocks(pages) {
   const np = pages.length;
   lines = lines.filter(l => {
     const label = /^(article|letter|review|open|research article|communication|perspective|brief communication|research|report|editorial)$/i.test(l.text.trim()) ||
-      /doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons/i.test(l.text) && l.text.length < 220;
+      (/doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons|\b\w+\.(org|com)\/\S/i.test(l.text) && l.text.length < 220);
     if (label && l.page === 1 && l.y > l.H * 0.7) return false;     // journal labels above the title on page 1
+    if (/^(cite this:|read online|downloaded (via|from)|see https?:|access metrics|metrics & more|article recommendations)|^\S+\.(org|com|net|edu)\/\S*( article)?$|^https?:\/\/\S+$/i.test(l.text.trim())) return false;
+    if (/\b(cite this|read online)\b.*\b(read online|cite this)\b|metrics & more.*recommendations/i.test(l.text)) return false;
     const edge = l.y > l.H * 0.9 || l.y < l.H * 0.08;
     if (!edge) return true;
     if (/^\s*(page\s*)?\d{1,4}(\s*(of|\/)\s*\d+)?\s*$/i.test(l.text)) return false;
-    if (/doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons/i.test(l.text) && l.text.length < 220) return false;
+    if (/doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons|\b\w+\.(org|com)\/\S/i.test(l.text) && l.text.length < 220) return false;
     if (/^(article|letter|review|open|research article|communication|perspective|brief communication|research|report|editorial)$/i.test(l.text.trim())) return false;
-    if (np >= 3 && cnt[key(l.text)].size >= Math.max(3, np * 0.5)) return false;
+    if (np >= 3 && key(l.text).length >= 4 && cnt[key(l.text)].size >= Math.max(3, np * 0.5)) return false;
     return true;
   });
   if (!lines.length) return [];
@@ -199,9 +258,13 @@ function buildBlocks(pages) {
   const words = t => (t.replace(/[\uE000\uE002][^\uE001\uE003]*[\uE001\uE003]/g, ' ').match(/\p{L}{3,}/gu) || [])
     .filter(w => !/^(exp|sin|cos|tan|cot|log|ln|max|min|det|sinh|cosh|tanh|lim|sup|inf|arg|eff)$/.test(w)).length;
   const hasMath = (t, b) => /[=+−<>≤≥≈∼∑∏∫√∂∇±×·∞→⟨⟩]|[\uE000-\uE003]|[α-ωΑ-Ω]|[\u0000-\u001F]/.test(t) || !!(b && b.mathFont);
+  const TAGEND = /\(\s*\d{1,3}[a-z]?\s*\)\s*$/;
+  const strongMath = (t, b) => /[=+−<>≤≥≈∼∑∏∫√∂∇±×·∞→⟨⟩]|[α-ωΑ-Ω]|[\u0000-\u001F]/.test(t) || !!(b && b.mathFont);
   const mathFontLine = l => (l.items || []).some(i => i.ext || i.adv || i.overline);
   const isHeading = (l, prev) => {
     const t = l.text, bare = t.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.|[A-H]\.)\s+/, '');
+    if (t.length <= 110 && t === t.toUpperCase() && /\p{Lu}{3}/u.test(t) && letters(t) >= 8 && letters(t) >= t.length * 0.6 && t.split(/\s+/).length <= 10 && !/[=+−<>.]$/.test(t) &&
+      (!prev || endsSent(prev.text) || prev.isHead || prev.page !== l.page || prev.col !== l.col || prev.y - l.y > 1.6 * gap)) return true;   // ALL-CAPS section titles (ACS)
     if (t.length > 110 || t.length < 3 || /[,;]$/.test(t) || letters(t) < t.length * 0.6) return false;
     if (SECTION_WORDS.test(bare.replace(/[.:]$/, ''))) return true;
     if (/[.:]$/.test(t)) return false;
@@ -219,11 +282,16 @@ function buildBlocks(pages) {
     if (!t) continue;
     const ab = t.match(/^abstract\s*[—–:.\-]\s*(.+)$/i);
     if (ab) { close(); blocks.push({ type: 'h', text: 'Abstract' }); t = ab[1]; cur = { type: 'p', text: '', items: [] }; }
+    else if (prev && prev.isHead && blocks.length && blocks[blocks.length - 1].type === 'h' && prev.page === l.page && prev.col === l.col && prev.y - l.y < 1.8 * gap &&
+      t === t.toUpperCase() && /\p{Lu}{3}/u.test(t) && t.length < 70 && /[,A-Z]$/.test(prev.text.trim()) && !/^(\d+(\.\d+)*\.?|[IVX]+\.)\s/.test(t)) {
+      blocks[blocks.length - 1].text += ' ' + t; l.isHead = true; prev = l; continue;   // heading wrapped onto a second line
+    }
     else if (isHeading(l, prev)) {
       close();
       const isTitle = !titleDone && l.page === 1 && l.h > body * 1.3 && !/^((\d+(\.\d+)*\.?)|([IVX]+\.))\s/.test(t) && !SECTION_WORDS.test(bare(t));
       const last = blocks[blocks.length - 1];
       if (isTitle && last && last.type === 'title') last.text += ' ' + t;
+      else if (!isTitle && last && last.type === 'h' && prev && prev.isHead && prev.page === l.page && prev.col === l.col && prev.y - l.y < 1.8 * gap && !/^(\d+(\.\d+)*\.?|[IVX]+\.)\s/.test(t)) last.text += ' ' + t;
       else blocks.push({ type: isTitle ? 'title' : 'h', text: t });
       if (!isTitle && blocks.some(b => b.type === 'title')) titleDone = true;
       inRefs = /^(\d+\.?\s*)?(references|bibliography)$/i.test(t);
@@ -236,13 +304,15 @@ function buildBlocks(pages) {
       const prevShort = prev.xEnd < prev.right - 2 * body;
       if (sameFlow && prev.y - l.y > gap * 1.45) newPara = true;
       if (Math.abs(l.h - prev.h) > body * 0.18) newPara = true;
+      if (prev.page === l.page && prev.col !== l.col && (prev.col === 'F' || l.col === 'F')) newPara = true;   // full-width block -> columns
+      if (/^(keywords|key words|index terms|ocis codes)\b/i.test(t)) newPara = true;
       if (endsSent(prev.text) && (indent || prevShort)) newPara = true;
       if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) newPara = true;
       if (inRefs && /^\[?\d{1,3}[\].)]\s/.test(t)) newPara = true;
       const mathy = x => {
         const p = x.text.replace(/[\uE000-\uE003]/g, '');
         if (mathFontLine(x) || /[\u0000-\u001F]/.test(p)) return words(x.text) <= 3;
-        if (words(x.text) <= 2 && hasMath(x.text) && x.x - x.left > 1.2 * body) return true;
+        if (words(x.text) <= 2 && hasMath(x.text) && (x.x - x.left > 0.9 * body || TAGEND.test(x.text))) return true;
         return p.length < 40 && words(x.text) <= 2 && x.x > x.left + 3 * body && x.xEnd < x.right - 3 * body;
       };
       if (mathy(l) !== mathy(prev)) newPara = true;
@@ -252,6 +322,9 @@ function buildBlocks(pages) {
     if (!cur.items) cur.items = [];
     cur.indent = Math.min(cur.indent === undefined ? Infinity : cur.indent, l.x - (l.left || 0));
     cur.mathFont = cur.mathFont || mathFontLine(l);
+    { const its = (l.items || []).slice().sort((a, b) => a.x - b.x); let g = 0;   // wide gaps = table columns
+      for (let k = 1; k < its.length; k++) if (its[k].x - (its[k - 1].x + its[k - 1].w) > 2 * body) g++;
+      cur.gaps = Math.max(cur.gaps || 0, g); }
     cur.items.push(...(l.items || []).map(i => ({...i, H: l.H})));
     if (!cur.text) cur.text = t;
     else if (/[a-z]-$/.test(cur.text) && /^[a-z]/.test(t)) cur.text = cur.text.slice(0, -1) + t;
@@ -266,7 +339,7 @@ function buildBlocks(pages) {
     if (b.type !== 'p') continue;
     const t = plain(b.text);
     if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) b.type = 'cap';
-    else if (t.length < 260 && words(b.text) <= 2 && hasMath(b.text, b) && (b.indent > 1.2 * body || b.mathFont)) b.type = 'eq';
+    else if (t.length < 260 && words(b.text) <= 2 && strongMath(t, b) && !(b.gaps >= 2 && !/[=<>≤≥≈]/.test(t)) && (b.indent > 0.9 * body || b.mathFont || TAGEND.test(t))) b.type = 'eq';
   }
   // short fragments right next to an equation are usually its numerator/denominator rows
   const isFrag = b => b.type === 'p' && plain(b.text).length <= 30 && !/[.?!:;]$/.test(b.text) && plain(b.text).split(/\s+/).length <= 4;
@@ -326,3 +399,4 @@ function findAcronyms(blocks) {
   return map;
 }
 
+if (typeof module !== 'undefined') module.exports = { pageLines, buildBlocks, findAcronyms };
