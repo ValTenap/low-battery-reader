@@ -14,6 +14,19 @@ Drop in a PDF and it gets reflowed into one adjustable column:
 
 The PDF is processed entirely in your browser and is never uploaded.
 
+## Zotero plugin
+**[Download Low-Battery Reader for Zotero (v0.1.0)](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader-0.1.0.xpi)** (Zotero 7 and 8)
+
+Install: in Zotero go to **Tools → Plugins**, then drag the `.xpi` file onto that window (or use the gear menu → *Install Plugin From File…*).
+
+Use it either way:
+- right-click a paper → **Open in Low-Battery Reader**
+- or press the **Aa** button in Zotero's PDF reader toolbar
+
+The paper opens reflowed in its own window, with the exact title, authors and abstract from your library. Settings are remembered between papers. Everything runs locally (fonts and PDF.js are bundled), so it works offline.
+
+Source: [`zotero-plugin/`](zotero-plugin/). To rebuild: `cd zotero-plugin && zip -r ../low-battery-reader.xpi manifest.json bootstrap.js locale content`. Presets live in `zotero-plugin/content/presets.js`.
+
 ## Feedback (prototype testing)
 The bottom of the page asks testers to tune the settings until reading feels comfortable, rate how tired they are (0–10), and press **Send settings to developer**. Each submission becomes one row in a Google Sheet (download as CSV). No paper text or file names are sent. The data will be used to fine-tune the Fine / Tired / Fried presets.
 
