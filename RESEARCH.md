@@ -17,6 +17,7 @@ Low-Battery Reader started as a personal tool: I have ADHD, and on some days den
 | Letter and word spacing | Extra spacing helps many readers with dyslexia, likely by reducing visual crowding | ✅ Supported (dyslexia) |
 | Shorter line width | Short lines improved speed and, for some, comprehension in dyslexic readers | ✅ Supported (dyslexia) |
 | Reading ruler / paragraph spotlight | Digital reading rulers improved reading speed, most for readers with dyslexia | ✅ Supported |
+| One word at a time mode | Showing one word at a time in the same spot improved comprehension for students with ADHD (not for controls) | ✅ Supported (ADHD, one study) |
 | Acronym hints | Acronyms in science have grown sharply and most are rarely reused, which hurts readability | 🟡 Indirect |
 | Warm background colors (cream etc.) | Warm backgrounds outperformed cool ones on screen, for readers with and without dyslexia | 🟡 One large study |
 | Dark mode | Dark-on-light text generally gives *better* performance than light-on-dark | ⚠️ Evidence against (kept as a comfort option) |
@@ -41,7 +42,7 @@ A large crowdsourced study compared 16 fonts and found that readers were about 3
 Digital reading rulers (a bar, shade or highlight that follows the current line) were tested with 177 participants, about half with dyslexia. Several designs increased reading speed by roughly 10–20 words per minute compared with no ruler, with the largest gains for readers with dyslexia. No single design suited everyone [[12]](#ref12). The reading ruler and paragraph spotlight in this tool follow the same principle.
 
 ### ADHD-specific findings
-- **Eye movements matter in ADHD reading.** A 2025 study compared normal reading with showing one word at a time in the centre of the screen (RSVP). Undergraduates with ADHD understood the text *better* in the RSVP mode, while controls did not [[15]](#ref15). This suggests that the effort of moving the eyes across dense text contributes to comprehension problems in ADHD, and it's a strong candidate for a future one-word-at-a-time mode.
+- **Eye movements matter in ADHD reading.** A 2025 study compared normal reading with showing one word at a time in the centre of the screen (RSVP). Undergraduates with ADHD understood the text *better* in the RSVP mode, while controls did not [[15]](#ref15). This suggests that the effort of moving the eyes across dense text contributes to comprehension problems in ADHD. The **one word at a time** mode is built on this finding. Note that it's a single study, and speed and comprehension trade off: the mode pauses longer at punctuation and long words, and shows the whole sentence when paused so you can re-orient.
 - **Attention interacts with layout.** In adolescents with and without ADHD, comprehension tracked sustained attention, and the effect of double spacing and screen vs. paper depended on each reader's attention level [[16]](#ref16).
 - **Screens can be harder.** Higher-education students with ADHD had more trouble understanding digitally displayed text than their peers, a gap that was not seen with print [[17]](#ref17). Tools that make on-screen reading calmer and more structured target exactly this gap.
 
@@ -64,7 +65,7 @@ An analysis of over 24 million titles and 18 million abstracts found that out of
 ## What this means for the project
 1. **Personalization over prescriptions.** No setting is a cure. The presets are starting points, and the feedback data is meant to tune them from real readers.
 2. **Be honest about evidence.** Settings with no measured benefit are kept as comfort options and labelled as such here.
-3. **Next steps suggested by research:** a one-word-at-a-time (RSVP) mode for ADHD [[15]](#ref15), and comparing readers' chosen settings with how tired they report being.
+3. **Built from research:** the one-word-at-a-time mode follows [[15]](#ref15). Next: comparing readers' chosen settings (including word speed) with how tired they report being.
 
 ---
 

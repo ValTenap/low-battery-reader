@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Low-Battery Reader",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Read papers on low-energy days: reflowed text with dyslexia-friendly fonts, spacing, word-start bolding, line color gradients and focus modes.",
   "author": "Valeria (ValTenap)",
   "homepage_url": "https://github.com/ValTenap/low-battery-reader",

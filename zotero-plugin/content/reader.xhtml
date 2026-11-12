@@ -60,6 +60,10 @@
     <h3>Focus</h3>
     <label class="toggle"><input type="checkbox" data-k="focus"/><span>Paragraph spotlight<small>Dims everything else. Click a paragraph, or <span class="kbd">J</span> / <span class="kbd">K</span> to move.</small></span></label>
     <label class="toggle"><input type="checkbox" data-k="ruler"/><span>Reading ruler<small>A bright band that follows your mouse.</small></span></label>
+    <button class="btn primary rsvp-start rsvp-open-btn">▶ One word at a time</button>
+    <div class="slider"><div class="row"><label>Word speed</label><output data-o="rsvpWpm"></output></div><input type="range" data-k="rsvpWpm" min="100" max="700" step="25"/></div>
+    <div class="slider"><div class="row"><label>Words per flash</label><output data-o="rsvpChunk"></output></div><input type="range" data-k="rsvpChunk" min="1" max="3" step="1"/></div>
+
   </div>
 
   <div class="sec">
@@ -84,6 +88,7 @@
   <div class="top">
     <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
     <span class="name" id="docName">No paper open</span>
+    <button class="btn rsvp-open-btn" title="One word at a time">▶ One word</button>
     <button class="btn primary" id="openBtn">Open PDF</button>
     <input type="file" id="file" accept="application/pdf,.pdf" hidden="hidden"/>
     <div class="progress" id="progress"></div>

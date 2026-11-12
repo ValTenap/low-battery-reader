@@ -19,7 +19,7 @@ const save = () => {
   try { const v = JSON.stringify(S); if (Z) Z.Prefs.set(PREF, v, true); else localStorage.setItem('lbr-settings', v); } catch (e) {}
 };
 
-const fmt = {size:v=>v+'px', lh:v=>(+v).toFixed(2), ls:v=>(+v).toFixed(2)+'em', ws:v=>(+v).toFixed(2)+'em', measure:v=>v+'ch', bold:v=>v>0?Math.round(v*100)+'%':'off'};
+const fmt = {size:v=>v+'px', lh:v=>(+v).toFixed(2), ls:v=>(+v).toFixed(2)+'em', ws:v=>(+v).toFixed(2)+'em', measure:v=>v+'ch', bold:v=>v>0?Math.round(v*100)+'%':'off', rsvpWpm:v=>v+' wpm', rsvpChunk:v=>v==1?'1 word':v+' words'};
 
 function syncControls() {
   $$('[data-k]').forEach(el => {
@@ -343,6 +343,197 @@ const SAMPLE = [
   {type:'ref', text:'[2] B. Person and C. Person, “A second reference,” APL Photonics 5, 1 (2021).'},
 ];
 $('#sampleBtn').onclick = () => loadBlocks('Sample paper', SAMPLE, 'sample');
+
+// ---------- one word at a time (RSVP) ----------
+// Research: Moussaoui et al. 2025 (J Int Neuropsychol Soc) found that showing one word at a time
+// in the same place improved comprehension for readers with ADHD. See RESEARCH.md.
+const RSVP = (() => {
+  let tokens = [], i = 0, timer = null, playing = false, el = null, openedAt = 0;
+  const NOT_END = /^(e\.g|i\.e|et al|fig|figs|eq|eqs|ref|refs|vs|cf|approx|resp|no|vol|pp|ca|sec|ch|al|dr|prof)\.$/i;
+
+  function build() {
+    el = document.createElement('div');
+    el.className = 'rsvp'; el.id = 'rsvp';
+    el.innerHTML =
+      '<div class="rsvp-top"><span class="rsvp-sec"></span><span class="rsvp-pct"></span><button class="btn rsvp-x" data-a="close" title="Exit (Esc)">✕ Exit</button></div>' +
+      '<div class="rsvp-stage" data-a="play" title="Click to play or pause">' +
+        '<div class="rsvp-tick"></div>' +
+        '<div class="rsvp-word"><span class="ra"></span><span class="rp"></span><span class="rb"></span></div>' +
+        '<div class="rsvp-tick"></div>' +
+      '</div>' +
+      '<div class="rsvp-ctx"></div>' +
+      '<div class="rsvp-bar"><div></div></div>' +
+      '<div class="rsvp-ctrl">' +
+        '<button class="btn" data-a="back" title="Back a sentence (↑)">⟲ Sentence</button>' +
+        '<button class="btn" data-a="prev" title="Previous word (←)">‹</button>' +
+        '<button class="btn primary rsvp-play" data-a="play">Play</button>' +
+        '<button class="btn" data-a="next" title="Next word (→)">›</button>' +
+        '<span class="rsvp-speed"><button class="btn" data-a="slower" title="Slower (−)">−</button><span class="rsvp-wpm"></span><button class="btn" data-a="faster" title="Faster (+)">+</button></span>' +
+      '</div>' +
+      '<p class="rsvp-help">Space play/pause · ← → word · ↑ back a sentence · + − speed · Esc exit</p>';
+    document.body.appendChild(el);
+    el.addEventListener('click', e => {
+      const t = e.target.closest('[data-a]'); if (!t) return;
+      act(t.dataset.a);
+    });
+  }
+
+  function makeTokens() {
+    const out = []; let section = '';
+    const blocks = [...docEl.querySelectorAll('.blk')].filter(b => b.offsetParent !== null);
+    for (const b of blocks) {
+      const idx = +b.dataset.i, B = DOC.blocks[idx];
+      if (!B || B.type === 'eq' || B.type === 'ref') continue;
+      const text = (typeof clean === 'function' ? clean(B.text) : B.text).trim();
+      if (!text) continue;
+      if (B.type === 'h' || B.type === 'title') {
+        section = B.type === 'h' ? text : section;
+        out.push({w: text, blk: idx, head: true, section, end: 'para', sentStart: true});
+        continue;
+      }
+      const words = text.split(/\s+/);
+      const n = Math.max(1, S.rsvpChunk | 0);
+      let sentStart = true;
+      for (let k = 0; k < words.length; k += n) {
+        const group = words.slice(k, k + n), last = group[group.length - 1];
+        let end = null;
+        if (k + n >= words.length) end = 'para';
+        else if (/[.!?]["')\]]?$/.test(last) && !NOT_END.test(last)) end = 'sent';
+        else if (/[,;:]["')\]]?$/.test(last)) end = 'comma';
+        out.push({w: group.join(' '), blk: idx, head: false, section, end, sentStart, cap: B.type === 'cap'});
+        sentStart = end === 'sent' || end === 'para';
+      }
+    }
+    return out;
+  }
+
+  function delay(t) {
+    let ms = 60000 / S.rsvpWpm * Math.max(1, t.w.split(' ').length);
+    const len = t.w.replace(/[^\p{L}\p{N}]/gu, '').length;
+    if (len > 8) ms *= 1 + Math.min(0.8, (len - 8) * 0.08);
+    if (t.head) ms *= 2.6;
+    else if (t.end === 'para') ms *= 2.6;
+    else if (t.end === 'sent') ms *= 2.0;
+    else if (t.end === 'comma') ms *= 1.4;
+    return ms;
+  }
+
+  function pivotIndex(w) {
+    const L = w.length;
+    return L <= 1 ? 0 : L <= 5 ? 1 : L <= 9 ? 2 : L <= 13 ? 3 : 4;
+  }
+
+  function show() {
+    const t = tokens[i]; if (!t) return;
+    const word = el.querySelector('.rsvp-word');
+    word.classList.toggle('is-head', t.head);
+    word.classList.toggle('is-cap', !!t.cap);
+    const [a, p, b] = [el.querySelector('.ra'), el.querySelector('.rp'), el.querySelector('.rb')];
+    if (t.head || t.w.includes(' ')) { a.textContent = ''; p.textContent = t.w; b.textContent = ''; p.classList.add('plain'); }
+    else {
+      const lead = (t.w.match(/^[^\p{L}\p{N}]*/u) || [''])[0];
+      const core = t.w.slice(lead.length), pi = lead.length + Math.min(pivotIndex(core), Math.max(0, core.length - 1));
+      a.textContent = t.w.slice(0, pi); p.textContent = t.w.charAt(pi); b.textContent = t.w.slice(pi + 1);
+      p.classList.remove('plain');
+    }
+    el.querySelector('.rsvp-sec').textContent = t.section || DOC.name || '';
+    const pct = Math.round(i / Math.max(1, tokens.length - 1) * 100);
+    el.querySelector('.rsvp-pct').textContent = pct + '%';
+    el.querySelector('.rsvp-bar div').style.width = pct + '%';
+    el.querySelector('.rsvp-wpm').textContent = S.rsvpWpm + ' wpm';
+    showContext();
+  }
+
+  // while paused, show the whole sentence with the current word marked
+  function showContext() {
+    const ctx = el.querySelector('.rsvp-ctx');
+    if (playing) { ctx.textContent = ''; ctx.classList.remove('on'); return; }
+    let s = i; while (s > 0 && !tokens[s].sentStart) s--;
+    let e = i; while (e < tokens.length - 1 && !(tokens[e].end === 'sent' || tokens[e].end === 'para')) e++;
+    ctx.textContent = '';
+    for (let k = s; k <= e; k++) {
+      const span = document.createElement('span');
+      span.textContent = tokens[k].w + ' ';
+      if (k === i) span.className = 'now';
+      ctx.appendChild(span);
+    }
+    ctx.classList.add('on');
+  }
+
+  function tick() {
+    clearTimeout(timer);
+    if (!playing) return;
+    show();
+    const t = tokens[i];
+    timer = setTimeout(() => {
+      if (i < tokens.length - 1) { i++; tick(); }
+      else { pause(); }
+    }, delay(t));
+  }
+
+  function play() {
+    if (i >= tokens.length - 1) i = 0;
+    playing = true; el.querySelector('.rsvp-play').textContent = 'Pause';
+    // a short lead-in so the first word isn't missed
+    show(); clearTimeout(timer); timer = setTimeout(tick, 450);
+  }
+  function pause() {
+    playing = false; clearTimeout(timer);
+    el.querySelector('.rsvp-play').textContent = 'Play';
+    show();
+  }
+
+  function act(a) {
+    switch (a) {
+      case 'play': playing ? pause() : play(); break;
+      case 'close': close(); break;
+      case 'prev': pause(); i = Math.max(0, i - 1); show(); break;
+      case 'next': pause(); i = Math.min(tokens.length - 1, i + 1); show(); break;
+      case 'back': {
+        let s = i; while (s > 0 && !tokens[s].sentStart) s--;
+        if (s === i && s > 0) { s--; while (s > 0 && !tokens[s].sentStart) s--; }
+        i = s; playing ? tick() : show(); break;
+      }
+      case 'slower': set('rsvpWpm', Math.max(100, S.rsvpWpm - 25)); show(); break;
+      case 'faster': set('rsvpWpm', Math.min(900, S.rsvpWpm + 25)); show(); break;
+    }
+  }
+
+  function onKey(e) {
+    if (!el || !el.classList.contains('on')) return;
+    const k = e.key;
+    const map = {' ': 'play', 'Spacebar': 'play', 'ArrowLeft': 'prev', 'ArrowRight': 'next', 'ArrowUp': 'back', 'Escape': 'close', '+': 'faster', '=': 'faster', '-': 'slower', '_': 'slower'};
+    if (map[k]) { e.preventDefault(); e.stopPropagation(); act(map[k]); }
+  }
+  document.addEventListener('keydown', onKey, true);
+
+  function open() {
+    if (!DOC) { status('Open a paper first.', 2500); return; }
+    if (!el) build();
+    tokens = makeTokens();
+    if (!tokens.length) { status('No readable text to show.', 2500); return; }
+    // start from the spotlighted paragraph, or the first paragraph on screen
+    const start = docEl.querySelector('.blk.cur') || firstVisibleBlock();
+    const si = start ? tokens.findIndex(t => t.blk === +start.dataset.i) : 0;
+    i = si > 0 ? si : 0;
+    el.style.setProperty('--rsvp-size', 'calc(' + S.size + 'px * 2.3)');
+    el.classList.add('on'); document.body.classList.add('rsvp-open');
+    openedAt = Date.now();
+    pause(); play();
+  }
+
+  function close() {
+    pause();
+    el.classList.remove('on'); document.body.classList.remove('rsvp-open');
+    if (typeof TRACK !== 'undefined') { TRACK.rsvpSec = (TRACK.rsvpSec || 0) + Math.round((Date.now() - openedAt) / 1000); }
+    const t = tokens[i];
+    const blk = t && docEl.querySelector(`.blk[data-i="${t.blk}"]`);
+    if (blk) { if (S.focus) setCur(blk); blk.scrollIntoView({block: 'center'}); }
+  }
+
+  return {open, close};
+})();
+$$('.rsvp-open-btn').forEach(b => b.addEventListener('click', () => RSVP.open()));
 
 // close with Ctrl/Cmd+W
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'w') { e.preventDefault(); window.close(); } });

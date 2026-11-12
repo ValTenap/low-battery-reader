@@ -153,6 +153,34 @@ a.btn{text-decoration:none;display:inline-block;color:inherit}
 a.btn.zot-dl{display:block}
 .small a{color:var(--accent)}
 @media (max-width:820px){.zot-top{display:none}}
+/* one word at a time (RSVP) */
+.rsvp{position:fixed;inset:0;z-index:80;background:var(--bg);color:var(--fg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px;font-family:Inter,sans-serif}
+.rsvp.on{display:flex}
+body.rsvp-open{overflow:hidden}
+.rsvp-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:12px 18px;color:var(--muted);font-size:13.5px}
+.rsvp-sec{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rsvp-pct{font-variant-numeric:tabular-nums}
+.rsvp-stage{width:min(1000px,96vw);cursor:pointer;user-select:none;padding:10px 0}
+.rsvp-tick{width:2px;height:16px;background:var(--line);margin:0 auto}
+.rsvp-word{display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;font-family:var(--font);font-size:var(--rsvp-size,40px);letter-spacing:var(--ls);line-height:1.5;white-space:pre;min-height:1.5em}
+.rsvp-word .ra{text-align:right}
+.rsvp-word .rb{text-align:left}
+.rsvp-word .rp{color:var(--accent);font-weight:700}
+.rsvp-word .rp.plain{color:inherit;font-weight:inherit;white-space:normal;text-align:center}
+.rsvp-word.is-head .rp{font-weight:700;color:var(--accent);font-size:.8em}
+.rsvp-word.is-cap{font-style:italic}
+.rsvp-ctx{max-width:min(760px,92vw);min-height:4.2em;margin:18px auto 0;text-align:center;color:var(--muted);font-family:var(--font);font-size:calc(var(--size) * .95);line-height:1.5;opacity:0;transition:opacity .2s}
+.rsvp-ctx.on{opacity:1}
+.rsvp-ctx .now{color:var(--fg);background:color-mix(in srgb,var(--accent) 22%,transparent);border-radius:4px}
+.rsvp-bar{width:min(520px,80vw);height:3px;background:var(--line);border-radius:3px;margin:22px auto 16px;overflow:hidden}
+.rsvp-bar div{height:100%;width:0;background:var(--accent)}
+.rsvp-ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.rsvp-ctrl .btn{min-width:40px}
+.rsvp-play{min-width:90px!important}
+.rsvp-speed{display:inline-flex;align-items:center;gap:6px;margin-left:10px}
+.rsvp-wpm{min-width:70px;text-align:center;font-variant-numeric:tabular-nums;font-size:13.5px}
+.rsvp-help{color:var(--muted);font-size:12px;margin:14px 0 0}
+.rsvp-start{display:block;width:100%;margin:2px 0 12px;padding:8px}
 .kbd{font:11px Inter,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 </style>
 </head>
@@ -210,6 +238,10 @@ a.btn.zot-dl{display:block}
     <h3>Focus</h3>
     <label class="toggle"><input type="checkbox" data-k="focus"><span>Paragraph spotlight<small>Dims everything else. Click a paragraph, or <span class="kbd">J</span> / <span class="kbd">K</span> to move.</small></span></label>
     <label class="toggle"><input type="checkbox" data-k="ruler"><span>Reading ruler<small>A bright band that follows your mouse.</small></span></label>
+    <button class="btn primary rsvp-start rsvp-open-btn">▶ One word at a time</button>
+    <div class="slider"><div class="row"><label>Word speed</label><output data-o="rsvpWpm"></output></div><input type="range" data-k="rsvpWpm" min="100" max="700" step="25"></div>
+    <div class="slider"><div class="row"><label>Words per flash</label><output data-o="rsvpChunk"></output></div><input type="range" data-k="rsvpChunk" min="1" max="3" step="1"></div>
+
   </div>
 
   <div class="sec">
@@ -245,6 +277,7 @@ a.btn.zot-dl{display:block}
   <div class="top">
     <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
     <span class="name" id="docName">No paper open</span>
+    <button class="btn rsvp-open-btn" title="One word at a time">▶ One word</button>
     <a class="btn zot-top" href="zotero/low-battery-reader.xpi" download="low-battery-reader.xpi">Zotero plugin</a>
     <button class="btn" id="fbJump">Give feedback</button>
     <button class="btn" id="pasteBtn">Paste text</button>
@@ -529,12 +562,12 @@ const docEl = $('#doc');
 // ---------- settings ----------
 // ---------- feedback endpoint (Google Apps Script web app URL) ----------
 const FEEDBACK_URL = 'https://script.google.com/macros/s/AKfycbwRJyfcJZ7J44dU3ABulEAT7YrLTn90QwgMZ7DcReQS40KSZYIC40LgnJpO72Onx3YIWA/exec';
-const TRACK = {preset: 'none', changes: 0, source: 'none', start: Date.now(),
+const TRACK = {preset: 'none', changes: 0, source: 'none', start: Date.now(), rsvpSec: 0,
   session: Math.random().toString(36).slice(2, 10)};
 function fbDirty() {}
 
 const DEFAULTS = {font:'Literata', size:18, lh:1.6, ls:0, ws:0, measure:68, theme:'dark', bold:0, gradient:false, tint:false,
-  focus:false, ruler:false, skim:false, acronyms:true, hideRefs:true, hideEq:false};
+  focus:false, ruler:false, skim:false, acronyms:true, hideRefs:true, hideEq:false, rsvpWpm:250, rsvpChunk:1};
 const PRESETS = {
   normal: {...DEFAULTS},
   tired:  {...DEFAULTS, font:'Atkinson Hyperlegible', size:20, lh:1.85, ls:0.02, ws:0.1, measure:60, theme:'cream', bold:0.4, gradient:true, hideEq:true},
@@ -545,7 +578,7 @@ let S = {...DEFAULTS};
 try { Object.assign(S, JSON.parse(localStorage.getItem('lbr-settings') || '{}')); } catch (e) {}
 const save = () => { try { localStorage.setItem('lbr-settings', JSON.stringify(S)); } catch (e) {} };
 
-const fmt = {size:v=>v+'px', lh:v=>(+v).toFixed(2), ls:v=>(+v).toFixed(2)+'em', ws:v=>(+v).toFixed(2)+'em', measure:v=>v+'ch', bold:v=>v>0?Math.round(v*100)+'%':'off'};
+const fmt = {size:v=>v+'px', lh:v=>(+v).toFixed(2), ls:v=>(+v).toFixed(2)+'em', ws:v=>(+v).toFixed(2)+'em', measure:v=>v+'ch', bold:v=>v>0?Math.round(v*100)+'%':'off', rsvpWpm:v=>v+' wpm', rsvpChunk:v=>v==1?'1 word':v+' words'};
 
 function syncControls() {
   $$('[data-k]').forEach(el => {
@@ -855,6 +888,197 @@ const SAMPLE = [
 ];
 $('#sampleBtn').onclick = () => loadBlocks('Sample paper', SAMPLE, 'sample');
 
+// ---------- one word at a time (RSVP) ----------
+// Research: Moussaoui et al. 2025 (J Int Neuropsychol Soc) found that showing one word at a time
+// in the same place improved comprehension for readers with ADHD. See RESEARCH.md.
+const RSVP = (() => {
+  let tokens = [], i = 0, timer = null, playing = false, el = null, openedAt = 0;
+  const NOT_END = /^(e\.g|i\.e|et al|fig|figs|eq|eqs|ref|refs|vs|cf|approx|resp|no|vol|pp|ca|sec|ch|al|dr|prof)\.$/i;
+
+  function build() {
+    el = document.createElement('div');
+    el.className = 'rsvp'; el.id = 'rsvp';
+    el.innerHTML =
+      '<div class="rsvp-top"><span class="rsvp-sec"></span><span class="rsvp-pct"></span><button class="btn rsvp-x" data-a="close" title="Exit (Esc)">✕ Exit</button></div>' +
+      '<div class="rsvp-stage" data-a="play" title="Click to play or pause">' +
+        '<div class="rsvp-tick"></div>' +
+        '<div class="rsvp-word"><span class="ra"></span><span class="rp"></span><span class="rb"></span></div>' +
+        '<div class="rsvp-tick"></div>' +
+      '</div>' +
+      '<div class="rsvp-ctx"></div>' +
+      '<div class="rsvp-bar"><div></div></div>' +
+      '<div class="rsvp-ctrl">' +
+        '<button class="btn" data-a="back" title="Back a sentence (↑)">⟲ Sentence</button>' +
+        '<button class="btn" data-a="prev" title="Previous word (←)">‹</button>' +
+        '<button class="btn primary rsvp-play" data-a="play">Play</button>' +
+        '<button class="btn" data-a="next" title="Next word (→)">›</button>' +
+        '<span class="rsvp-speed"><button class="btn" data-a="slower" title="Slower (−)">−</button><span class="rsvp-wpm"></span><button class="btn" data-a="faster" title="Faster (+)">+</button></span>' +
+      '</div>' +
+      '<p class="rsvp-help">Space play/pause · ← → word · ↑ back a sentence · + − speed · Esc exit</p>';
+    document.body.appendChild(el);
+    el.addEventListener('click', e => {
+      const t = e.target.closest('[data-a]'); if (!t) return;
+      act(t.dataset.a);
+    });
+  }
+
+  function makeTokens() {
+    const out = []; let section = '';
+    const blocks = [...docEl.querySelectorAll('.blk')].filter(b => b.offsetParent !== null);
+    for (const b of blocks) {
+      const idx = +b.dataset.i, B = DOC.blocks[idx];
+      if (!B || B.type === 'eq' || B.type === 'ref') continue;
+      const text = (typeof clean === 'function' ? clean(B.text) : B.text).trim();
+      if (!text) continue;
+      if (B.type === 'h' || B.type === 'title') {
+        section = B.type === 'h' ? text : section;
+        out.push({w: text, blk: idx, head: true, section, end: 'para', sentStart: true});
+        continue;
+      }
+      const words = text.split(/\s+/);
+      const n = Math.max(1, S.rsvpChunk | 0);
+      let sentStart = true;
+      for (let k = 0; k < words.length; k += n) {
+        const group = words.slice(k, k + n), last = group[group.length - 1];
+        let end = null;
+        if (k + n >= words.length) end = 'para';
+        else if (/[.!?]["')\]]?$/.test(last) && !NOT_END.test(last)) end = 'sent';
+        else if (/[,;:]["')\]]?$/.test(last)) end = 'comma';
+        out.push({w: group.join(' '), blk: idx, head: false, section, end, sentStart, cap: B.type === 'cap'});
+        sentStart = end === 'sent' || end === 'para';
+      }
+    }
+    return out;
+  }
+
+  function delay(t) {
+    let ms = 60000 / S.rsvpWpm * Math.max(1, t.w.split(' ').length);
+    const len = t.w.replace(/[^\p{L}\p{N}]/gu, '').length;
+    if (len > 8) ms *= 1 + Math.min(0.8, (len - 8) * 0.08);
+    if (t.head) ms *= 2.6;
+    else if (t.end === 'para') ms *= 2.6;
+    else if (t.end === 'sent') ms *= 2.0;
+    else if (t.end === 'comma') ms *= 1.4;
+    return ms;
+  }
+
+  function pivotIndex(w) {
+    const L = w.length;
+    return L <= 1 ? 0 : L <= 5 ? 1 : L <= 9 ? 2 : L <= 13 ? 3 : 4;
+  }
+
+  function show() {
+    const t = tokens[i]; if (!t) return;
+    const word = el.querySelector('.rsvp-word');
+    word.classList.toggle('is-head', t.head);
+    word.classList.toggle('is-cap', !!t.cap);
+    const [a, p, b] = [el.querySelector('.ra'), el.querySelector('.rp'), el.querySelector('.rb')];
+    if (t.head || t.w.includes(' ')) { a.textContent = ''; p.textContent = t.w; b.textContent = ''; p.classList.add('plain'); }
+    else {
+      const lead = (t.w.match(/^[^\p{L}\p{N}]*/u) || [''])[0];
+      const core = t.w.slice(lead.length), pi = lead.length + Math.min(pivotIndex(core), Math.max(0, core.length - 1));
+      a.textContent = t.w.slice(0, pi); p.textContent = t.w.charAt(pi); b.textContent = t.w.slice(pi + 1);
+      p.classList.remove('plain');
+    }
+    el.querySelector('.rsvp-sec').textContent = t.section || DOC.name || '';
+    const pct = Math.round(i / Math.max(1, tokens.length - 1) * 100);
+    el.querySelector('.rsvp-pct').textContent = pct + '%';
+    el.querySelector('.rsvp-bar div').style.width = pct + '%';
+    el.querySelector('.rsvp-wpm').textContent = S.rsvpWpm + ' wpm';
+    showContext();
+  }
+
+  // while paused, show the whole sentence with the current word marked
+  function showContext() {
+    const ctx = el.querySelector('.rsvp-ctx');
+    if (playing) { ctx.textContent = ''; ctx.classList.remove('on'); return; }
+    let s = i; while (s > 0 && !tokens[s].sentStart) s--;
+    let e = i; while (e < tokens.length - 1 && !(tokens[e].end === 'sent' || tokens[e].end === 'para')) e++;
+    ctx.textContent = '';
+    for (let k = s; k <= e; k++) {
+      const span = document.createElement('span');
+      span.textContent = tokens[k].w + ' ';
+      if (k === i) span.className = 'now';
+      ctx.appendChild(span);
+    }
+    ctx.classList.add('on');
+  }
+
+  function tick() {
+    clearTimeout(timer);
+    if (!playing) return;
+    show();
+    const t = tokens[i];
+    timer = setTimeout(() => {
+      if (i < tokens.length - 1) { i++; tick(); }
+      else { pause(); }
+    }, delay(t));
+  }
+
+  function play() {
+    if (i >= tokens.length - 1) i = 0;
+    playing = true; el.querySelector('.rsvp-play').textContent = 'Pause';
+    // a short lead-in so the first word isn't missed
+    show(); clearTimeout(timer); timer = setTimeout(tick, 450);
+  }
+  function pause() {
+    playing = false; clearTimeout(timer);
+    el.querySelector('.rsvp-play').textContent = 'Play';
+    show();
+  }
+
+  function act(a) {
+    switch (a) {
+      case 'play': playing ? pause() : play(); break;
+      case 'close': close(); break;
+      case 'prev': pause(); i = Math.max(0, i - 1); show(); break;
+      case 'next': pause(); i = Math.min(tokens.length - 1, i + 1); show(); break;
+      case 'back': {
+        let s = i; while (s > 0 && !tokens[s].sentStart) s--;
+        if (s === i && s > 0) { s--; while (s > 0 && !tokens[s].sentStart) s--; }
+        i = s; playing ? tick() : show(); break;
+      }
+      case 'slower': set('rsvpWpm', Math.max(100, S.rsvpWpm - 25)); show(); break;
+      case 'faster': set('rsvpWpm', Math.min(900, S.rsvpWpm + 25)); show(); break;
+    }
+  }
+
+  function onKey(e) {
+    if (!el || !el.classList.contains('on')) return;
+    const k = e.key;
+    const map = {' ': 'play', 'Spacebar': 'play', 'ArrowLeft': 'prev', 'ArrowRight': 'next', 'ArrowUp': 'back', 'Escape': 'close', '+': 'faster', '=': 'faster', '-': 'slower', '_': 'slower'};
+    if (map[k]) { e.preventDefault(); e.stopPropagation(); act(map[k]); }
+  }
+  document.addEventListener('keydown', onKey, true);
+
+  function open() {
+    if (!DOC) { status('Open a paper first.', 2500); return; }
+    if (!el) build();
+    tokens = makeTokens();
+    if (!tokens.length) { status('No readable text to show.', 2500); return; }
+    // start from the spotlighted paragraph, or the first paragraph on screen
+    const start = docEl.querySelector('.blk.cur') || firstVisibleBlock();
+    const si = start ? tokens.findIndex(t => t.blk === +start.dataset.i) : 0;
+    i = si > 0 ? si : 0;
+    el.style.setProperty('--rsvp-size', 'calc(' + S.size + 'px * 2.3)');
+    el.classList.add('on'); document.body.classList.add('rsvp-open');
+    openedAt = Date.now();
+    pause(); play();
+  }
+
+  function close() {
+    pause();
+    el.classList.remove('on'); document.body.classList.remove('rsvp-open');
+    if (typeof TRACK !== 'undefined') { TRACK.rsvpSec = (TRACK.rsvpSec || 0) + Math.round((Date.now() - openedAt) / 1000); }
+    const t = tokens[i];
+    const blk = t && docEl.querySelector(`.blk[data-i="${t.blk}"]`);
+    if (blk) { if (S.focus) setCur(blk); blk.scrollIntoView({block: 'center'}); }
+  }
+
+  return {open, close};
+})();
+$$('.rsvp-open-btn').forEach(b => b.addEventListener('click', () => RSVP.open()));
+
 // ---------- feedback ----------
 const TIRED_WORDS = ['wide awake','fresh','fine','okay','a bit tired','tired','pretty tired','very tired','exhausted','nearly fried','completely fried'];
 const fbT = $('#fbTired');
@@ -879,7 +1103,8 @@ function collect() {
     touch_device: matchMedia('(pointer: coarse)').matches ? 1 : 0,
     name: $('#fbName').value.trim(),
     note: $('#fbNote').value.trim(),
-    app_version: 'v2',
+    rsvp_seconds: TRACK.rsvpSec || 0,
+    app_version: 'v3',
   });
   return row;
 }
