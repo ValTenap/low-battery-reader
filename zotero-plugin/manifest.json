@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Low-Battery Reader",
+  "version": "0.1.0",
+  "description": "Read papers on low-energy days: reflowed text with dyslexia-friendly fonts, spacing, word-start bolding, line color gradients and focus modes.",
+  "author": "Valeria (ValTenap)",
+  "homepage_url": "https://github.com/ValTenap/low-battery-reader",
+  "icons": {
+    "48": "content/icons/icon.svg",
+    "96": "content/icons/icon.svg"
+  },
+  "applications": {
+    "zotero": {
+      "id": "low-battery-reader@valtenap.github.io",
+      "update_url": "https://valtenap.github.io/low-battery-reader/zotero/updates.json",
+      "strict_min_version": "6.999",
+      "strict_max_version": "8.*"
+    }
+  }
+}

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" windowtype="lowbattery:reader" width="1280" height="900">
+<head>
+<meta charset="utf-8"/>
+<title>Low-Battery Reader</title>
+<link rel="stylesheet" href="fonts.css"/>
+<link rel="stylesheet" href="reader.css"/>
+</head>
+<body class="t-white">
+
+<aside class="side" id="side">
+  <p class="brand">Low-Battery Reader</p>
+  <p class="tag">For papers on days your brain is out of charge. Everything updates live.</p>
+
+  <div class="sec" style="border-top:0;padding-top:0">
+    <h3>How tired are you?</h3>
+    <div class="presets">
+      <button class="btn" data-preset="normal">Fine</button>
+      <button class="btn" data-preset="tired">Tired</button>
+      <button class="btn" data-preset="very">Fried</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Text</h3>
+    <div class="slider"><div class="row"><label for="font">Font</label></div>
+      <select id="font" data-k="font">
+        <option value="Literata">Literata (serif)</option>
+        <option value="Inter">Inter (sans)</option>
+        <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+        <option value="Lexend">Lexend</option>
+        <option value="OpenDyslexic">OpenDyslexic</option>
+        <option value="Comic Neue">Comic Neue</option>
+      </select>
+    </div>
+    <div class="slider"><div class="row"><label>Size</label><output data-o="size"></output></div><input type="range" data-k="size" min="14" max="30" step="1"/></div>
+    <div class="slider"><div class="row"><label>Line spacing</label><output data-o="lh"></output></div><input type="range" data-k="lh" min="1.2" max="2.6" step="0.05"/></div>
+    <div class="slider"><div class="row"><label>Letter spacing</label><output data-o="ls"></output></div><input type="range" data-k="ls" min="0" max="0.2" step="0.01"/></div>
+    <div class="slider"><div class="row"><label>Word spacing</label><output data-o="ws"></output></div><input type="range" data-k="ws" min="0" max="0.6" step="0.02"/></div>
+    <div class="slider"><div class="row"><label>Line width</label><output data-o="measure"></output></div><input type="range" data-k="measure" min="38" max="100" step="2"/></div>
+    <div class="row" style="margin-bottom:4px"><label>Background</label></div>
+    <div class="swatches" id="swatches">
+      <button class="sw" data-theme="white" title="White" style="background:#fff"></button>
+      <button class="sw" data-theme="cream" title="Cream" style="background:#f7f0e1"></button>
+      <button class="sw" data-theme="mint" title="Mint" style="background:#e6f2ea"></button>
+      <button class="sw" data-theme="sky" title="Sky" style="background:#e7eef8"></button>
+      <button class="sw" data-theme="dark" title="Dark" style="background:#18191d"></button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Emphasis</h3>
+    <div class="slider"><div class="row"><label>Bold start of words</label><output data-o="bold"></output></div><input type="range" data-k="bold" min="0" max="0.7" step="0.05"/></div>
+    <label class="toggle"><input type="checkbox" data-k="gradient"/><span>Line color gradient<small>Each line fades into a color, so your eye finds the next one.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="tint"/><span>Tint <b style="color:var(--tb)">b</b> <b style="color:var(--td)">d</b> <b style="color:var(--tp)">p</b> <b style="color:var(--tq)">q</b><small>Different colors for easily flipped letters.</small></span></label>
+  </div>
+
+  <div class="sec">
+    <h3>Focus</h3>
+    <label class="toggle"><input type="checkbox" data-k="focus"/><span>Paragraph spotlight<small>Dims everything else. Click a paragraph, or <span class="kbd">J</span> / <span class="kbd">K</span> to move.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="ruler"/><span>Reading ruler<small>A bright band that follows your mouse.</small></span></label>
+  </div>
+
+  <div class="sec">
+    <h3>Paper tools</h3>
+    <label class="toggle"><input type="checkbox" data-k="skim"/><span>Skim order<small>Abstract → figures → conclusion first, then the rest.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="acronyms"/><span>Acronym hints<small>Hover an acronym to see what it stands for.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="hideRefs"/><span>Fold references</span></label>
+    <label class="toggle"><input type="checkbox" data-k="hideEq"/><span>Fold equations<small>PDF text extraction garbles math, so hide it behind a toggle.</small></span></label>
+  </div>
+
+  <div class="sec">
+    <h3>Outline</h3>
+    <nav class="outline" id="outline"><span class="empty-note">Open a paper to see its sections.</span></nav>
+  </div>
+  <div class="sec">
+    <h3>Acronyms found</h3>
+    <ul class="gloss" id="gloss"><li class="empty-note">None yet.</li></ul>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="top">
+    <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
+    <span class="name" id="docName">No paper open</span>
+    <button class="btn primary" id="openBtn">Open PDF</button>
+    <input type="file" id="file" accept="application/pdf,.pdf" hidden="hidden"/>
+    <div class="progress" id="progress"></div>
+  </div>
+  <article id="doc">
+    <div class="welcome" id="welcome">
+      <div class="drop">
+        <h2>Drop a paper here</h2>
+        <p>Drop in a PDF and it gets reflowed into one calm column you can restyle: fonts, spacing, colors, bolding, focus modes.</p>
+        <div class="btns">
+          <button class="btn primary" id="openBtn2">Choose a PDF</button>
+          <button class="btn" id="sampleBtn">Try a sample</button>
+        </div>
+      </div>
+      <p class="small">Tip: in Zotero, right-click a paper and choose <b>Open in Low-Battery Reader</b>, or use the <b>Aa</b> button in the PDF reader toolbar.<br/>Works best on text-based PDFs. Scanned PDFs have no text to extract.</p>
+    </div>
+  </article>
+</main>
+
+<div class="shade" id="shTop"></div><div class="shade" id="shBot"></div>
+<div class="overlay">Drop the PDF to open it</div>
+<div class="status" id="status"></div>
+
+<script src="lib/pdf.min.js"></script>
+<script src="lib/pdf.worker.min.js"></script>
+<script src="parse.js"></script>
+<script src="presets.js"></script>
+<script src="reader.js"></script>
+</body>
+</html>
