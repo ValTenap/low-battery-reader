@@ -53,10 +53,37 @@ function markExtFonts(items) {
   }
 }
 
+// Springer/Elsevier "Adv…" math fonts label their glyphs with the wrong characters
+const ADV_SYM = {'ð': '(', 'Þ': ')', '¼': '=', 'þ': '+', 'j': '|', 'k': '‖', '\u0002': '−', 'À': '−', 'Â': '×', 'Á': '·', 'Ã': '*', '½': '[', 'Š': ']', 'f': '{', 'g': '}', 'h': '⟨', 'i': '⟩', ' ': ' '};
+function fixAdvFonts(items) {
+  const by = {};
+  items.forEach(i => { if (i.f) (by[i.f] = by[i.f] || []).push(i); });
+  let adv = false;
+  for (const f in by) {
+    const chars = by[f].map(i => i.s).join('');
+    if (/[ðÞ¼þ]/.test(chars) && [...chars].every(c => ADV_SYM[c] !== undefined)) {
+      adv = true;
+      by[f].forEach(i => { i.s = [...i.s].map(c => ADV_SYM[c]).join(''); i.adv = true; });
+    }
+  }
+  for (const f in by) {
+    const its = by[f];
+    // radical: a 'p' glyph followed by a run of 'ffi' glyphs that draws the overline
+    its.filter(i => /^(ffi)+f{0,2}$/.test(i.s.trim()) && i.s.trim().length >= 3).forEach(ov => {
+      ov.overline = true; ov.s = ''; ov.adv = true;
+      const p = its.find(i => i.s.trim() === 'p' && Math.abs(i.x + i.w - ov.x) < 1.5);
+      if (p) { p.s = '√'; p.adv = true; }
+    });
+    // companion punctuation font: ';' is a comma and '=' a slash
+    if (adv && its.every(i => /^[;=]+$/.test(i.s.trim())) && its.some(i => i.s.includes(';'))) its.forEach(i => { i.s = i.s.replace(/;/g, ',').replace(/=/g, '/'); });
+  }
+}
+
 function pageLines(items, W, H, page) {
+  fixAdvFonts(items);
   markExtFonts(items);
   // big extension glyphs hang below their reported baseline: cluster them by their visual centre
-  const yc = it => it.ext ? it.y - it.h : it.s.trim() === '√' ? it.y - 0.8 * it.h : it.y;
+  const yc = it => it.ext || it.overline ? it.y - it.h : it.s.trim() === '√' ? it.y - 0.8 * it.h : it.y;
   // rows: first full-size glyphs, then attach smaller ones (scripts) to the nearest row
   items = items.slice().sort((a, b) => yc(b) - yc(a) || a.x - b.x);
   const hist = {};
@@ -73,12 +100,19 @@ function pageLines(items, W, H, page) {
     }
     return rows;
   };
-  const big = items.filter(i => i.ext || i.h >= body * 0.86), small = items.filter(i => !(i.ext || i.h >= body * 0.86));
+  // a glyph is a script only if it is smaller than text right next to it (not just smaller than the page's body text)
+  const isScript = it => !it.ext && !it.overline && items.some(j => j !== it && j.h * 0.86 >= it.h && Math.abs(yc(j) - yc(it)) < 1.0 * j.h &&
+    j.x - 1.2 * it.h < it.x + it.w && it.x < j.x + j.w + 1.2 * it.h);
+  const scriptSet = new Set(items.filter(isScript));
+  const big = items.filter(i => !scriptSet.has(i)), small = items.filter(i => scriptSet.has(i));
   const rows = cluster(big, []);
   const loose = [];
   small.forEach(it => {
     let best = null, bd = Infinity;
-    rows.forEach(r => { const d = Math.abs(r.y - yc(it)); if (d < bd) { bd = d; best = r; } });
+    rows.forEach(r => {
+      if (!r.items.some(j => j.x - 3 * it.h < it.x + it.w && it.x < j.x + j.w + 3 * it.h)) return;
+      const d = Math.abs(r.y - yc(it)); if (d < bd) { bd = d; best = r; }
+    });
     if (best && bd < 0.85 * best.h) best.items.push(it); else loose.push(it);
   });
   cluster(loose, []).forEach(r => rows.push(r));
@@ -129,14 +163,19 @@ const SECTION_WORDS = /^(abstract|introduction|background|theory|methods?|method
 function buildBlocks(pages) {
   let lines = pages.flat();
   // drop running headers/footers and page numbers
-  const key = t => t.replace(/\d+/g, '#').toLowerCase();
+  const key = t => t.toLowerCase().split(/[^a-z]+/).filter(w => w.length > 1).sort().join(' ');
   const cnt = {};
   lines.forEach(l => { const k = key(l.text); cnt[k] = (cnt[k] || new Set()).add(l.page); });
   const np = pages.length;
   lines = lines.filter(l => {
+    const label = /^(article|letter|review|open|research article|communication|perspective|brief communication|research|report|editorial)$/i.test(l.text.trim()) ||
+      /doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons/i.test(l.text) && l.text.length < 220;
+    if (label && l.page === 1 && l.y > l.H * 0.7) return false;     // journal labels above the title on page 1
     const edge = l.y > l.H * 0.9 || l.y < l.H * 0.08;
     if (!edge) return true;
     if (/^\s*(page\s*)?\d{1,4}(\s*(of|\/)\s*\d+)?\s*$/i.test(l.text)) return false;
+    if (/doi\.org|www\.|https?:\/\/|©|all rights reserved|creativecommons/i.test(l.text) && l.text.length < 220) return false;
+    if (/^(article|letter|review|open|research article|communication|perspective|brief communication|research|report|editorial)$/i.test(l.text.trim())) return false;
     if (np >= 3 && cnt[key(l.text)].size >= Math.max(3, np * 0.5)) return false;
     return true;
   });
@@ -156,6 +195,11 @@ function buildBlocks(pages) {
   const gap = median(gaps) || body * 1.2;
 
   const letters = t => (t.match(/\p{L}/gu) || []).length;
+  // real words (3+ letters) outside sub/superscripts, ignoring function names like cos/exp
+  const words = t => (t.replace(/[\uE000\uE002][^\uE001\uE003]*[\uE001\uE003]/g, ' ').match(/\p{L}{3,}/gu) || [])
+    .filter(w => !/^(exp|sin|cos|tan|cot|log|ln|max|min|det|sinh|cosh|tanh|lim|sup|inf|arg|eff)$/.test(w)).length;
+  const hasMath = (t, b) => /[=+−<>≤≥≈∼∑∏∫√∂∇±×·∞→⟨⟩]|[\uE000-\uE003]|[α-ωΑ-Ω]|[\u0000-\u001F]/.test(t) || !!(b && b.mathFont);
+  const mathFontLine = l => (l.items || []).some(i => i.ext || i.adv || i.overline);
   const isHeading = (l, prev) => {
     const t = l.text, bare = t.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.|[A-H]\.)\s+/, '');
     if (t.length > 110 || t.length < 3 || /[,;]$/.test(t) || letters(t) < t.length * 0.6) return false;
@@ -195,12 +239,19 @@ function buildBlocks(pages) {
       if (endsSent(prev.text) && (indent || prevShort)) newPara = true;
       if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) newPara = true;
       if (inRefs && /^\[?\d{1,3}[\].)]\s/.test(t)) newPara = true;
-      const mathy = x => { const p = x.text.replace(/[\uE000-\uE003]/g, ''); if ((p.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).length >= 3) return false; return /[\u0000-\u001F]/.test(p) || letters(p) < p.length * 0.55 || (p.length < 40 && x.x > x.left + 3 * body && x.xEnd < x.right - 3 * body); };
+      const mathy = x => {
+        const p = x.text.replace(/[\uE000-\uE003]/g, '');
+        if (mathFontLine(x) || /[\u0000-\u001F]/.test(p)) return words(x.text) <= 3;
+        if (words(x.text) <= 2 && hasMath(x.text) && x.x - x.left > 1.2 * body) return true;
+        return p.length < 40 && words(x.text) <= 2 && x.x > x.left + 3 * body && x.xEnd < x.right - 3 * body;
+      };
       if (mathy(l) !== mathy(prev)) newPara = true;
     }
     if (newPara && cur && cur.text) close();
     if (!cur) cur = { type: 'p', text: '', items: [] };
     if (!cur.items) cur.items = [];
+    cur.indent = Math.min(cur.indent === undefined ? Infinity : cur.indent, l.x - (l.left || 0));
+    cur.mathFont = cur.mathFont || mathFontLine(l);
     cur.items.push(...(l.items || []).map(i => ({...i, H: l.H})));
     if (!cur.text) cur.text = t;
     else if (/[a-z]-$/.test(cur.text) && /^[a-z]/.test(t)) cur.text = cur.text.slice(0, -1) + t;
@@ -211,12 +262,11 @@ function buildBlocks(pages) {
   close();
   // classify
   const plain = t => t.replace(/[\uE000-\uE003]/g, '');
-  const words = t => (t.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).filter(w => !/^\W*(exp|sin|cos|tan|log|max|min|det|sinh|cosh|tanh|lim|sup|inf|arg)$/.test(w)).length;
   for (const b of blocks) {
     if (b.type !== 'p') continue;
     const t = plain(b.text);
     if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) b.type = 'cap';
-    else if (t.length < 260 && letters(t) < t.length * 0.55 && words(t) < 3) b.type = 'eq';
+    else if (t.length < 260 && words(b.text) <= 2 && hasMath(b.text, b) && (b.indent > 1.2 * body || b.mathFont)) b.type = 'eq';
   }
   // short fragments right next to an equation are usually its numerator/denominator rows
   const isFrag = b => b.type === 'p' && plain(b.text).length <= 30 && !/[.?!:;]$/.test(b.text) && plain(b.text).split(/\s+/).length <= 4;
@@ -240,7 +290,7 @@ function buildBlocks(pages) {
   const merged = [];
   for (const b of blocks) {
     const m = merged[merged.length - 1];
-    if (m && m.type === 'eq' && b.type === 'eq') { m.text += '  ' + b.text; m.items = (m.items || []).concat(b.items || []); }
+    if (m && m.type === 'eq' && b.type === 'eq') { m.text += '  ' + b.text; m.items = (m.items || []).concat(b.items || []); m.mathFont = m.mathFont || b.mathFont; }
     else merged.push(b);
   }
   merged.forEach(b => { if (b.type !== 'eq') delete b.items; });

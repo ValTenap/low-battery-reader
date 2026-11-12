@@ -48,9 +48,9 @@ const EQTEX = (() => {
     if (/CMEX|esint/i.test(n)) return 'xc';                                       // code-based extension font
     if (/MathExtension|txex|pxex|Extension|Euclid.*Extra/i.test(n)) return 'xu'; // unicode extension font
     if (it.ext && !n) return /[\u0000-\u001F]/.test(it.s) || /^[PQRSTXYZpqrst]$/.test(it.s.trim()) ? 'xc' : 'xu';
-    if (/Bold|CMBX|BX\d/i.test(n) && !/Italic/i.test(n)) return 'bf';
+    if ((/Bold|CMBX|BX\d/i.test(n) || /\.B(\+|$)/.test(n)) && !/Italic/i.test(n)) return 'bf';
     if (/CMSY|MathSymbols|txsy|pxsy|Symbol/i.test(n)) return 'sy';
-    if (/CMMI|MathItalic|txmi|pxmi|Italic|Oblique/i.test(n)) return 'mi';
+    if (/CMMI|MathItalic|txmi|pxmi|Italic|Oblique/i.test(n) || /\.I(\+|$)/.test(n)) return 'mi';
     return 'r';
   };
   const isExt = f => f === 'xc' || f === 'xu';
@@ -213,7 +213,7 @@ const EQTEX = (() => {
     const norm = toks.filter(t => !t.small);
     norm.forEach(t => {
       const r = (yMid(t) - (base + 0.25 * main)) / main;
-      t.level = ['op', 'int', 'piece', 'junk'].includes(t.kind) ? 'base' : r > 0.45 ? 'num' : r < -0.45 ? 'den' : 'base';
+      t.level = ['op', 'int', 'piece', 'junk', 'sqrt'].includes(t.kind) ? 'base' : r > 0.45 ? 'num' : r < -0.45 ? 'den' : 'base';
     });
     toks.filter(t => t.kind === 'op' || t.kind === 'int').forEach(op => {
       const n = norm.filter(t => t !== op && t.x >= op.x2 - 0.5 && t.kind !== 'op' && t.kind !== 'int').sort((a, b) => a.x - b.x)[0];
@@ -284,6 +284,7 @@ const EQTEX = (() => {
     });
 
     const flat = toks.filter(t => !used.has(t)).sort((a, b) => a.x - b.x || b.y - a.y);
+    const ex2 = t => Math.max(t.x2, ...t.sub.map(q => q.x2), ...t.sup.map(q => q.x2));
 
     const scripts = t => (t.sub.length ? '_{' + row(t.sub, depth + 1, flags, rules) + '}' : '') + (t.sup.length ? '^{' + row(t.sup, depth + 1, flags, rules) + '}' : '');
     const emitTok = t => {
@@ -307,7 +308,6 @@ const EQTEX = (() => {
         }
       }
     };
-    const ex2 = t => Math.max(t.x2, ...t.sub.map(q => q.x2), ...t.sup.map(q => q.x2));
     const emitSeq = list => {
       let out = '', prev = null;
       for (let k = 0; k < list.length; k++) {
@@ -326,9 +326,14 @@ const EQTEX = (() => {
 
     let out = '', k = 0, tag = '';
     if (depth === 0) {
-      const last = flat[flat.length - 1];
-      const m = last && last.kind === 'text' && last.s.trim().match(TAG_RE);
-      if (m && flat.length > 1 && last.x - flat[flat.length - 2].x2 > 2 * main) { tag = '\\tag{' + m[1] + '}'; flat.pop(); }
+      for (const n of [1, 2, 3]) {   // "(1)" may be one glyph run or three
+        if (flat.length <= n) break;
+        const tail = flat.slice(-n);
+        if (!tail.every(t => t.kind === 'text' || t.kind === 'open' || t.kind === 'close')) continue;
+        const txt = tail.map(t => (t.s || t.tex || '').trim()).join('');
+        const m = txt.match(TAG_RE);
+        if (m && tail[0].x - ex2(flat[flat.length - n - 1]) > 2 * main) { tag = '\\tag{' + m[1] + '}'; flat.splice(-n); break; }
+      }
     }
     const pending = [];
     const flushBase = () => { if (pending.length) out += emitSeq(pending.splice(0)); };
@@ -350,9 +355,12 @@ const EQTEX = (() => {
   function build(items, names, rules) {
     fontNames = names || {};
     const flags = {bad: 0, low: 0};
-    (rules || []).forEach(r => { r.taken = false; });
+    const allItems = items;
+    rules = (rules || []).concat(items.filter(i => i.overline).map(i => ({x1: i.x, x2: i.x + i.w, y: i.y + 0.75 * i.h})));
+    rules.forEach(r => { r.taken = false; });
     items = items.filter(i => i.s && i.s.trim());
     const normal = items.filter(i => !isExt(fam(i)));
+    rules = rules.concat([]);
     if (!normal.length) return {rows: [], ok: false};
     const hs = normal.map(i => i.h), main = Math.max(...hs.filter(h => h >= median(hs) * 0.9));
     const vy = i => isExt(fam(i)) ? i.y - i.h : i.y;

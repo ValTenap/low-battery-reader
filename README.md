@@ -46,7 +46,7 @@ Collected columns: `submitted_at, session_id, tiredness, font, size, lh, ls, ws,
 Backend setup: see [`feedback-backend/Code.gs`](feedback-backend/Code.gs). The web-app URL goes in `FEEDBACK_URL` near the top of the main script in `index.html`. Until it's set, the button shows the settings as CSV for testers to copy.
 
 ## Limitations
-- Equation rebuilding is tuned for LaTeX-made PDFs (Computer Modern / Latin Modern). Equations from other tools may fall back to the original snapshot.
+- Equation rebuilding is tested on LaTeX-made PDFs (Computer Modern / Latin Modern) and Springer Nature typesetting. Equations from other tools may fall back to the original snapshot.
 - Unusual layouts may scramble reading order; scanned PDFs have no text layer.
 - Figures are shown by caption only.
 
