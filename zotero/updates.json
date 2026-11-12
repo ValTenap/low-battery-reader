@@ -3,9 +3,9 @@
     "low-battery-reader@valtenap.github.io": {
       "updates": [
         {
-          "version": "0.3.0",
-          "update_link": "https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader-0.3.0.xpi",
-          "update_hash": "sha256:8f07506c5b7840a9dc23f4c0219c7397010014ddd7f60f2e33ecf19b58da698f",
+          "version": "0.3.1",
+          "update_link": "https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader-0.3.1.xpi",
+          "update_hash": "sha256:6d05f2f36c417ca018d6df279e969cad798de2d661922a66b723681804f8bfb4",
           "applications": { "zotero": { "strict_min_version": "6.999" } }
         }
       ]

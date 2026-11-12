@@ -60,10 +60,7 @@
     <h3>Focus</h3>
     <label class="toggle"><input type="checkbox" data-k="focus"/><span>Paragraph spotlight<small>Dims everything else. Click a paragraph, or <span class="kbd">J</span> / <span class="kbd">K</span> to move.</small></span></label>
     <label class="toggle"><input type="checkbox" data-k="ruler"/><span>Reading ruler<small>A bright band that follows your mouse.</small></span></label>
-    <button class="btn primary rsvp-start rsvp-open-btn">▶ One word at a time</button>
-    <div class="slider"><div class="row"><label>Word speed</label><output data-o="rsvpWpm"></output></div><input type="range" data-k="rsvpWpm" min="100" max="700" step="25"/></div>
-    <div class="slider"><div class="row"><label>Words per flash</label><output data-o="rsvpChunk"></output></div><input type="range" data-k="rsvpChunk" min="1" max="3" step="1"/></div>
-    <p class="zot-txt" style="margin:0 0 12px">📍 Your place is saved when you exit, or <b>Shift+click</b> any word to mark it.</p>
+    <p class="zot-txt" style="margin:0 0 12px">📍 Your place is saved as you read. <b>Shift+click</b> any word to mark it yourself.</p>
 
   </div>
 
@@ -89,7 +86,6 @@
   <div class="top">
     <button class="btn menu-btn" id="menuBtn" aria-label="Settings">Aa</button>
     <span class="name" id="docName">No paper open</span>
-    <button class="btn rsvp-open-btn" title="One word at a time">▶ One word</button>
     <button class="btn primary" id="openBtn">Open PDF</button>
     <input type="file" id="file" accept="application/pdf,.pdf" hidden="hidden"/>
     <div class="progress" id="progress"></div>
@@ -97,7 +93,6 @@
   <div class="resume" id="resume" hidden="hidden">
     <span class="resume-pin">📍</span><span id="resumeText" class="resume-text"></span>
     <button class="btn primary" id="resumeJump">Jump there</button>
-    <button class="btn" id="resumeWord">▶ Continue in one-word mode</button>
     <button class="btn resume-x" id="resumeClose" title="Dismiss">✕</button>
   </div>
   <article id="doc">
@@ -116,24 +111,6 @@
 </main>
 
 <div class="shade" id="shTop"></div><div class="shade" id="shBot"></div>
-<div class="rsvp" id="rsvp">
-  <div class="rsvp-top"><span class="rsvp-sec"></span><span class="rsvp-pct"></span><button class="btn rsvp-x" data-a="close" title="Exit (Esc)">✕ Exit</button></div>
-  <div class="rsvp-stage" title="Click to play or pause">
-    <div class="rsvp-tick"></div>
-    <div class="rsvp-word"><span class="ra"></span><span class="rp"></span><span class="rb"></span></div>
-    <div class="rsvp-tick"></div>
-  </div>
-  <div class="rsvp-ctx"></div>
-  <div class="rsvp-bar"><div></div></div>
-  <div class="rsvp-ctrl">
-    <button class="btn" data-a="back" title="Back a sentence (↑)">⟲ Sentence</button>
-    <button class="btn" data-a="prev" title="Previous word (←)">‹</button>
-    <button class="btn primary rsvp-play" data-a="play">Play</button>
-    <button class="btn" data-a="next" title="Next word (→)">›</button>
-    <span class="rsvp-speed"><button class="btn" data-a="slower" title="Slower (−)">−</button><span class="rsvp-wpm"></span><button class="btn" data-a="faster" title="Faster (+)">+</button></span>
-  </div>
-  <p class="rsvp-help">Space play/pause · ← → word · ↑ back a sentence · + − speed · Esc exit · your place is saved when you exit</p>
-</div>
 <div class="overlay">Drop the PDF to open it</div>
 <div class="status" id="status"></div>
 

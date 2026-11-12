@@ -25,7 +25,7 @@ I built this as a tool for my own ADHD, and I've tried to be honest about what t
 That's why the tool focuses on letting each reader find their own settings, and why the prototype collects anonymous settings data to tune the presets.
 
 ## Zotero plugin
-**[Download Low-Battery Reader for Zotero](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader.xpi)** (latest, currently v0.3.0) (Zotero 7 and 8)
+**[Download Low-Battery Reader for Zotero](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader.xpi)** (latest, currently v0.3.1) (Zotero 7 and 8)
 
 Install: in Zotero go to **Tools → Plugins**, then drag the `.xpi` file onto that window (or use the gear menu → *Install Plugin From File…*).
 
@@ -33,7 +33,7 @@ Use it either way:
 - right-click a paper → **Open in Low-Battery Reader**
 - or press the **Aa** button in Zotero's PDF reader toolbar
 
-The paper opens reflowed in its own window, with the exact title, authors and abstract from your library. Settings are remembered between papers, and your reading position is remembered for each item in your library. Everything runs locally (fonts and PDF.js are bundled), so it works offline.
+The paper opens reflowed in its own window, with the exact title, authors and abstract from your library. Settings are remembered between papers, and your reading position is remembered for each item in your library. Everything runs locally (fonts and PDF.js are bundled), so it works offline. The one-word-at-a-time mode is website-only.
 
 Source: [`zotero-plugin/`](zotero-plugin/). When releasing a new version, also copy the xpi to `zotero/low-battery-reader.xpi` (the website links there) and update `zotero/updates.json`. To rebuild: `cd zotero-plugin && zip -r ../low-battery-reader.xpi manifest.json bootstrap.js locale content`. Presets live in `zotero-plugin/content/presets.js`.
 
