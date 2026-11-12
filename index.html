@@ -19,6 +19,7 @@ body.t-white{--bg:#ffffff;--fg:#1f2024;--muted:#6b6e76;--panel:#f6f6f7;--line:#e
 body.t-cream{--bg:#f7f0e1;--fg:#2c261d;--muted:#7d7262;--panel:#efe6d2;--line:#ddd1b8;--accent:#9a5b13;--ga:#1d55c4;--gb:#a8325a;--tb:#1d55c4;--td:#b52d22;--tp:#2b7d3a;--tq:#73409f;--shade:rgba(60,45,20,.36)}
 body.t-mint{--bg:#e6f2ea;--fg:#1d2a22;--muted:#5f7568;--panel:#d9ebdf;--line:#c3dccb;--accent:#25744a;--ga:#1d55c4;--gb:#a8325a;--tb:#1d55c4;--td:#b52d22;--tp:#7a5a00;--tq:#73409f;--shade:rgba(20,50,30,.34)}
 body.t-sky{--bg:#e7eef8;--fg:#1c2433;--muted:#5d6a80;--panel:#dbe5f3;--line:#c5d3e8;--accent:#2b59b8;--ga:#1d50b8;--gb:#a8325a;--tb:#1d50b8;--td:#b52d22;--tp:#2b7d3a;--tq:#73409f;--shade:rgba(20,30,60,.34)}
+body.t-plum{--bg:#1d1626;--fg:#e4daee;--muted:#a394b4;--panel:#261d31;--line:#3b2f4a;--accent:#c6a2ff;--ga:#8fb6ff;--gb:#ff9cc6;--tb:#8fb6ff;--td:#ff8f86;--tp:#86dc96;--tq:#d6b3ff;--shade:rgba(0,0,0,.55)}
 body.t-dark{--bg:#18191d;--fg:#dcd8cf;--muted:#8d8a84;--panel:#222328;--line:#33353b;--accent:#8fb3ff;--ga:#7fb0ff;--gb:#ff92b9;--tb:#7fb0ff;--td:#ff8a80;--tp:#7ddc8f;--tq:#c9a2ff;--shade:rgba(0,0,0,.55)}
 
 *{box-sizing:border-box}
@@ -155,7 +156,7 @@ a.btn.zot-dl{display:block}
 .kbd{font:11px Inter,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
 </style>
 </head>
-<body class="t-white">
+<body class="t-dark">
 
 <aside class="side" id="side">
   <p class="brand">Low-Battery Reader</p>
@@ -194,6 +195,7 @@ a.btn.zot-dl{display:block}
       <button class="sw" data-theme="mint" title="Mint" style="background:#e6f2ea"></button>
       <button class="sw" data-theme="sky" title="Sky" style="background:#e7eef8"></button>
       <button class="sw" data-theme="dark" title="Dark" style="background:#18191d"></button>
+      <button class="sw" data-theme="plum" title="Dark purple" style="background:#2a1d3a"></button>
     </div>
   </div>
 
@@ -530,7 +532,7 @@ const TRACK = {preset: 'none', changes: 0, source: 'none', start: Date.now(),
   session: Math.random().toString(36).slice(2, 10)};
 function fbDirty() {}
 
-const DEFAULTS = {font:'Literata', size:18, lh:1.6, ls:0, ws:0, measure:68, theme:'white', bold:0, gradient:false, tint:false,
+const DEFAULTS = {font:'Literata', size:18, lh:1.6, ls:0, ws:0, measure:68, theme:'dark', bold:0, gradient:false, tint:false,
   focus:false, ruler:false, skim:false, acronyms:true, hideRefs:true, hideEq:false};
 const PRESETS = {
   normal: {...DEFAULTS},
