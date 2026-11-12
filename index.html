@@ -330,6 +330,23 @@ body.is-dark .rsvp{background:radial-gradient(110% 55% at 72% 104%,color-mix(in 
 .status{background:var(--ink);color:var(--on-ink);border-radius:999px;box-shadow:var(--lift);font-family:'Instrument Sans',sans-serif}
 .modal .box{background:var(--glass-strong);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--glass-line);border-radius:22px}
 .overlay{background:color-mix(in srgb,var(--iris) 16%,transparent);border-color:var(--iris);backdrop-filter:blur(4px)}
+
+/* equations */
+#doc .eq{margin:1.1em 0 1.25em}
+#doc .eq-body{overflow-x:auto;overflow-y:hidden;padding:2px 0;text-align:center}
+#doc .eq-body .katex-display{margin:.35em 0}
+#doc .eq-body .katex{font-size:1.1em;letter-spacing:0;word-spacing:0}
+#doc .eq-img{display:block;margin:.35em auto;max-width:100%;height:auto;mix-blend-mode:multiply}
+body.is-dark #doc .eq-img{filter:invert(1) hue-rotate(180deg);mix-blend-mode:screen}
+#doc .eq-tools{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap;opacity:0;transition:opacity .15s;font-family:'Instrument Sans',Inter,sans-serif;letter-spacing:0;word-spacing:0}
+#doc .eq:hover .eq-tools,#doc .eq:focus-within .eq-tools{opacity:1}
+@media (hover:none){#doc .eq-tools{opacity:1}}
+#doc .eq-btn{font:500 12px/1.4 'Instrument Sans',Inter,sans-serif;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:3px 10px;cursor:pointer}
+#doc .eq-btn:hover{color:var(--fg);border-color:var(--accent)}
+#doc .eq-note{font:12px/1.4 'Instrument Sans',Inter,sans-serif;color:var(--muted);margin-right:auto}
+#doc .eq-pending{color:var(--muted);font:13px 'Instrument Sans',Inter,sans-serif;padding:.7em}
+#doc details.eq>summary{margin-bottom:.4em}
+#doc sub,#doc sup{font-size:.72em;line-height:0}
 </style>
 </head>
 <body class="t-dark">
@@ -398,7 +415,7 @@ body.is-dark .rsvp{background:radial-gradient(110% 55% at 72% 104%,color-mix(in 
     <label class="toggle"><input type="checkbox" data-k="skim"><span>Skim order<small>Abstract → figures → conclusion first, then the rest.</small></span></label>
     <label class="toggle"><input type="checkbox" data-k="acronyms"><span>Acronym hints<small>Hover an acronym to see what it stands for.</small></span></label>
     <label class="toggle"><input type="checkbox" data-k="hideRefs"><span>Fold references</span></label>
-    <label class="toggle"><input type="checkbox" data-k="hideEq"><span>Fold equations<small>PDF text extraction garbles math, so hide it behind a toggle.</small></span></label>
+    <label class="toggle"><input type="checkbox" data-k="hideEq"><span>Fold equations<small>Tuck equations behind a click when you just want the words.</small></span></label>
   </div>
 
   <div class="sec">
@@ -520,11 +537,13 @@ body.is-dark .rsvp{background:radial-gradient(110% 55% at 72% 104%,color-mix(in 
 <div class="status" id="status"></div>
 <div class="modal" id="modal"><div class="box">
   <p style="margin:0 0 8px;font-weight:600">Paste text</p>
-  <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">Leave a blank line between paragraphs. Start a line with # to make it a heading.</p>
+  <p style="margin:0 0 10px;font-size:13px;color:var(--muted)">Leave a blank line between paragraphs. Start a line with # to make it a heading. Put an equation on its own between $$ and $$ to typeset it.</p>
   <textarea id="pasteArea" placeholder="Paste a paper, abstract or section here…"></textarea>
   <div class="actions"><button class="btn" id="pasteCancel">Cancel</button><button class="btn primary" id="pasteGo">Read it</button></div>
 </div></div>
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script>
@@ -534,32 +553,85 @@ body.is-dark .rsvp{background:radial-gradient(110% 55% at 72% 104%,color-mix(in 
 
 function median(a) { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; }
 
+// private-use markers for inline sub/superscripts: \uE000 sub \uE001 end, \uE002 sup \uE003 end
+const SUB0 = '\uE000', SUB1 = '\uE001', SUP0 = '\uE002', SUP1 = '\uE003';
 function joinItems(items) {
   items.sort((a, b) => a.x - b.x);
+  // main size and baseline of the line
+  const hist = {};
+  items.forEach(i => { const k = Math.round(i.h * 2) / 2; hist[k] = (hist[k] || 0) + Math.max(1, i.s.trim().length); });
+  const main = +Object.entries(hist).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+  const mainYs = items.filter(i => Math.abs(i.h - main) < main * 0.12).map(i => i.y);
+  const base = median(mainYs.length ? mainYs : items.map(i => i.y));
   let text = '', prevEnd = null;
   for (const it of items) {
-    if (text && prevEnd !== null && !/\s$/.test(text) && !/^\s/.test(it.s) && it.x - prevEnd > 0.15 * it.h) text += ' ';
-    text += it.s; prevEnd = it.x + it.w;
+    let str = it.s, script = false;
+    if (it.h < main * 0.86 && str.trim()) {
+      if (it.y > base + 0.18 * main) { str = SUP0 + str.replace(/\s+/g, '') + SUP1; script = true; }
+      else if (it.y < base - 0.08 * main) { str = SUB0 + str.replace(/\s+/g, '') + SUB1; script = true; }
+    }
+    if (!script && text && prevEnd !== null && !/\s$/.test(text) && !/^\s/.test(str) && it.x - prevEnd > 0.15 * it.h) text += ' ';
+    text += str; prevEnd = it.x + it.w;
   }
-  return text.replace(/\s+/g, ' ').trim();
+  return combineAccents(text.replace(/\s+/g, ' ').trim());
+}
+const COMBINE = {'ˆ': '\u0302', '˜': '\u0303', '¯': '\u0304', 'ˉ': '\u0304', '˙': '\u0307', '¨': '\u0308', 'ˇ': '\u030C'};
+function combineAccents(t) {
+  // "yˆ" -> "ŷ" (accent after its letter), "(ˆx" -> "(x̂" (accent before its letter)
+  return t.replace(/([\p{L}])\s?([ˆ˜¯ˉ˙¨ˇ])/gu, (m, l, a) => l + COMBINE[a])
+          .replace(/([ˆ˜¯ˉ˙¨ˇ])\s?([\p{L}])/gu, (m, a, l) => l + COMBINE[a]);
 }
 
 function makeLine(items, col, page) {
   const xs = items.map(i => i.x), xe = items.map(i => i.x + i.w);
   // height weighted toward the dominant text, so superscripts don't distort it
   const hs = []; items.forEach(i => { for (let k = 0; k < Math.max(1, i.s.length); k++) hs.push(i.h); });
-  return { text: joinItems(items), x: Math.min(...xs), xEnd: Math.max(...xe), y: median(items.map(i => i.y)), h: median(hs), col, page };
+  return { text: joinItems(items), items: items.map(i => ({...i, page})), x: Math.min(...xs), xEnd: Math.max(...xe), y: median(items.map(i => i.y)), h: median(hs), col, page };
+}
+
+// TeX's extension font (big ∑ ∫ ( ) √) encodes glyphs as control chars / a few letters; detect it per font
+const EXT_CHARS = /^[\u0000-\u001FPQRSTXYZpqrstHILMNO\[\\\]()|{}∑∏∐⋃⋂∫∬∭∮√⟨⟩‖⌊⌋⌈⌉⎛⎜⎝⎞⎟⎠⎡⎢⎣⎤⎥⎦⎧⎨⎩⎪⎫⎬⎭⎮⌠⌡]+$/;
+function markExtFonts(items) {
+  const by = {};
+  items.forEach(i => { if (i.f) (by[i.f] = by[i.f] || []).push(i); });
+  for (const f in by) {
+    const its = by[f];
+    const ext = its.every(i => i.s.trim().length <= 2 && EXT_CHARS.test(i.s.trim())) &&
+      (its.some(i => /[\u0000-\u001F∑∏∫√⎛⎝⎧]/.test(i.s)) || its.length <= 6);
+    if (ext) its.forEach(i => { i.ext = true; });
+  }
 }
 
 function pageLines(items, W, H, page) {
-  // rows by y
-  items = items.slice().sort((a, b) => b.y - a.y || a.x - b.x);
-  const rows = [];
-  for (const it of items) {
-    const r = rows[rows.length - 1];
-    if (r && Math.abs(r.y - it.y) < 0.55 * Math.max(it.h, r.h)) r.items.push(it);
-    else rows.push({ y: it.y, h: it.h, items: [it] });
-  }
+  markExtFonts(items);
+  // big extension glyphs hang below their reported baseline: cluster them by their visual centre
+  const yc = it => it.ext ? it.y - it.h : it.s.trim() === '√' ? it.y - 0.8 * it.h : it.y;
+  // rows: first full-size glyphs, then attach smaller ones (scripts) to the nearest row
+  items = items.slice().sort((a, b) => yc(b) - yc(a) || a.x - b.x);
+  const hist = {};
+  items.forEach(i => { const k = Math.round(i.h * 2) / 2; hist[k] = (hist[k] || 0) + i.s.length; });
+  const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
+  const cluster = (list, rows) => {
+    for (const it of list) {
+      const r = rows[rows.length - 1];
+      if (r && Math.abs(r.y - yc(it)) < 0.6 * Math.max(it.h, r.h)) {
+        r.items.push(it);
+        if (!it.ext && (it.h > r.h * 1.05 || r.extOnly)) { r.y = yc(it); r.h = it.h; r.extOnly = false; }
+      }
+      else rows.push({ y: yc(it), h: it.h, items: [it], extOnly: !!it.ext });
+    }
+    return rows;
+  };
+  const big = items.filter(i => i.ext || i.h >= body * 0.86), small = items.filter(i => !(i.ext || i.h >= body * 0.86));
+  const rows = cluster(big, []);
+  const loose = [];
+  small.forEach(it => {
+    let best = null, bd = Infinity;
+    rows.forEach(r => { const d = Math.abs(r.y - yc(it)); if (d < bd) { bd = d; best = r; } });
+    if (best && bd < 0.85 * best.h) best.items.push(it); else loose.push(it);
+  });
+  cluster(loose, []).forEach(r => rows.push(r));
+  rows.sort((a, b) => b.y - a.y);
   // gutter detection on a coverage histogram
   const N = 240, cov = new Array(N).fill(0);
   for (const it of items) {
@@ -643,6 +715,7 @@ function buildBlocks(pages) {
     return false;
   };
   const endsSent = t => /[.!?:]["')\]]?$/.test(t);
+  const bare = t => t.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.|[A-H]\.)\s+/, '').replace(/[.:]$/, '');
 
   const blocks = []; let cur = null, prev = null, inRefs = false, titleDone = false;
   const close = () => { if (cur) blocks.push(cur); cur = null; };
@@ -650,10 +723,10 @@ function buildBlocks(pages) {
     let t = l.text;
     if (!t) continue;
     const ab = t.match(/^abstract\s*[—–:.\-]\s*(.+)$/i);
-    if (ab) { close(); blocks.push({ type: 'h', text: 'Abstract' }); t = ab[1]; cur = { type: 'p', text: '' }; }
+    if (ab) { close(); blocks.push({ type: 'h', text: 'Abstract' }); t = ab[1]; cur = { type: 'p', text: '', items: [] }; }
     else if (isHeading(l, prev)) {
       close();
-      const isTitle = !titleDone && l.page === 1 && l.h > body * 1.3;
+      const isTitle = !titleDone && l.page === 1 && l.h > body * 1.3 && !/^((\d+(\.\d+)*\.?)|([IVX]+\.))\s/.test(t) && !SECTION_WORDS.test(bare(t));
       const last = blocks[blocks.length - 1];
       if (isTitle && last && last.type === 'title') last.text += ' ' + t;
       else blocks.push({ type: isTitle ? 'title' : 'h', text: t });
@@ -671,9 +744,13 @@ function buildBlocks(pages) {
       if (endsSent(prev.text) && (indent || prevShort)) newPara = true;
       if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) newPara = true;
       if (inRefs && /^\[?\d{1,3}[\].)]\s/.test(t)) newPara = true;
+      const mathy = x => { const p = x.text.replace(/[\uE000-\uE003]/g, ''); if ((p.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).length >= 3) return false; return /[\u0000-\u001F]/.test(p) || letters(p) < p.length * 0.55 || (p.length < 40 && x.x > x.left + 3 * body && x.xEnd < x.right - 3 * body); };
+      if (mathy(l) !== mathy(prev)) newPara = true;
     }
     if (newPara && cur && cur.text) close();
-    if (!cur) cur = { type: 'p', text: '' };
+    if (!cur) cur = { type: 'p', text: '', items: [] };
+    if (!cur.items) cur.items = [];
+    cur.items.push(...(l.items || []).map(i => ({...i, H: l.H})));
     if (!cur.text) cur.text = t;
     else if (/[a-z]-$/.test(cur.text) && /^[a-z]/.test(t)) cur.text = cur.text.slice(0, -1) + t;
     else cur.text += ' ' + t;
@@ -682,10 +759,19 @@ function buildBlocks(pages) {
   }
   close();
   // classify
+  const plain = t => t.replace(/[\uE000-\uE003]/g, '');
+  const words = t => (t.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).filter(w => !/^\W*(exp|sin|cos|tan|log|max|min|det|sinh|cosh|tanh|lim|sup|inf|arg)$/.test(w)).length;
   for (const b of blocks) {
     if (b.type !== 'p') continue;
-    if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(b.text)) b.type = 'cap';
-    else if (b.text.length < 260 && letters(b.text) < b.text.length * 0.55) b.type = 'eq';
+    const t = plain(b.text);
+    if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) b.type = 'cap';
+    else if (t.length < 260 && letters(t) < t.length * 0.55 && words(t) < 3) b.type = 'eq';
+  }
+  // short fragments right next to an equation are usually its numerator/denominator rows
+  const isFrag = b => b.type === 'p' && plain(b.text).length <= 30 && !/[.?!:;]$/.test(b.text) && plain(b.text).split(/\s+/).length <= 4;
+  for (let k = 0; k < blocks.length; k++) {
+    if (!isFrag(blocks[k])) continue;
+    if ((blocks[k - 1] && blocks[k - 1].type === 'eq') || (blocks[k + 1] && blocks[k + 1].type === 'eq')) blocks[k].type = 'eq';
   }
   // author/affiliation lines between the title and the first real section
   const tIdx = blocks.findIndex(b => b.type === 'title');
@@ -703,8 +789,10 @@ function buildBlocks(pages) {
   const merged = [];
   for (const b of blocks) {
     const m = merged[merged.length - 1];
-    if (m && m.type === 'eq' && b.type === 'eq') m.text += '  ' + b.text; else merged.push(b);
+    if (m && m.type === 'eq' && b.type === 'eq') { m.text += '  ' + b.text; m.items = (m.items || []).concat(b.items || []); }
+    else merged.push(b);
   }
+  merged.forEach(b => { if (b.type !== 'eq') delete b.items; });
   return merged;
 }
 
@@ -739,6 +827,423 @@ function findAcronyms(blocks) {
 
 
 
+// ---------- equations: rebuild LaTeX from a PDF's glyphs and rules ----------
+// A PDF stores where each glyph sits and where lines are drawn, not LaTeX. We rebuild structure:
+//  - fraction bars and radical overlines come from drawn rules (thin rectangles/lines)
+//  - small raised/lowered glyphs -> ^{} / _{}; limits on big operators
+//  - rows inside big brackets without a bar -> matrices; an unmatched "{" -> cases
+//  - TeX extension-font glyphs (big ( ) ∑ ∫ √) -> commands; accents; equation numbers -> \tag
+const EQTEX = (() => {
+  const GREEK = {'α':'\\alpha','β':'\\beta','γ':'\\gamma','δ':'\\delta','ε':'\\varepsilon','ϵ':'\\epsilon','ζ':'\\zeta','η':'\\eta','θ':'\\theta','ϑ':'\\vartheta','ι':'\\iota','κ':'\\kappa','λ':'\\lambda','μ':'\\mu','ν':'\\nu','ξ':'\\xi','π':'\\pi','ϖ':'\\varpi','ρ':'\\rho','ϱ':'\\varrho','σ':'\\sigma','ς':'\\varsigma','τ':'\\tau','υ':'\\upsilon','φ':'\\varphi','ϕ':'\\phi','χ':'\\chi','ψ':'\\psi','ω':'\\omega',
+    'Γ':'\\Gamma','Δ':'\\Delta','Θ':'\\Theta','Λ':'\\Lambda','Ξ':'\\Xi','Π':'\\Pi','Σ':'\\Sigma','Υ':'\\Upsilon','Φ':'\\Phi','Ψ':'\\Psi','Ω':'\\Omega'};
+  const SYM = {'−':'-','–':'-','×':'\\times ','·':'\\cdot ','⋅':'\\cdot ','∗':'*','≤':'\\le ','≥':'\\ge ','≪':'\\ll ','≫':'\\gg ','≈':'\\approx ','≃':'\\simeq ','≅':'\\cong ','∼':'\\sim ','≡':'\\equiv ','≠':'\\neq ','∝':'\\propto ',
+    '∞':'\\infty ','∂':'\\partial ','∇':'\\nabla ','±':'\\pm ','∓':'\\mp ','→':'\\to ','←':'\\leftarrow ','↔':'\\leftrightarrow ','⇒':'\\Rightarrow ','⇔':'\\Leftrightarrow ','↦':'\\mapsto ',
+    '∈':'\\in ','∉':'\\notin ','⊂':'\\subset ','⊆':'\\subseteq ','∪':'\\cup ','∩':'\\cap ','∅':'\\emptyset ','∀':'\\forall ','∃':'\\exists ','¬':'\\neg ','∧':'\\wedge ','∨':'\\vee ',
+    '⟨':'\\langle ','⟩':'\\rangle ','〈':'\\langle ','〉':'\\rangle ','†':'^\\dagger','‡':'\\ddagger ','ℏ':'\\hbar ','ℓ':'\\ell ','′':"'",'″':"''",'…':'\\ldots ','⋯':'\\cdots ','⊗':'\\otimes ','⊕':'\\oplus ','⊥':'\\perp ','∥':'\\parallel ','‖':'\\|','∘':'\\circ ','°':'^\\circ',
+    '∑':'\\sum ','∏':'\\prod ','∫':'\\int ','∮':'\\oint ','√':'\\surd ','ℜ':'\\Re ','ℑ':'\\Im ','ℝ':'\\mathbb{R}','ℂ':'\\mathbb{C}','ℕ':'\\mathbb{N}','ℤ':'\\mathbb{Z}','ı':'\\imath ','ȷ':'\\jmath ',
+    '{':'\\{','}':'\\}','#':'\\#','%':'\\%','&':'\\&','$':'\\$','_':'\\_','\\':'\\backslash ','~':'\\sim ','^':'\\wedge '};
+  const ACCENT = {'ˆ':'\\hat','˜':'\\tilde','¯':'\\bar','ˉ':'\\bar','˙':'\\dot','¨':'\\ddot','ˇ':'\\check','˘':'\\breve','⃗':'\\vec','\u0302':'\\hat','\u0303':'\\tilde','\u0304':'\\bar','\u0307':'\\dot','\u0308':'\\ddot','\u20D7':'\\vec'};
+  const FUNCS = new Set(['sin','cos','tan','cot','sec','csc','sinh','cosh','tanh','coth','arcsin','arccos','arctan','exp','log','ln','lg','det','dim','ker','deg','gcd','max','min','sup','inf','lim','arg','Pr','tr','Tr','sgn']);
+  // TeX extension font (cmex) by character code
+  const EXT = {};
+  [['\u0000\u0010\u0012\u0020\u0030\u0040','(', 'open'],['\u0001\u0011\u0013\u0021\u0031\u0041',')','close'],['\u0002\u0014\u0022\u0032\u0068','[','open'],['\u0003\u0015\u0023\u0033\u0069',']','close'],
+   ['\u0008\u001A\u0028\u0038\u003A\u003C\u003E\u006E','\\{','open'],['\u0009\u001B\u0029\u0039\u003B\u003D\u006F','\\}','close'],['\u000A\u001C\u002A\u0044','\\langle','open'],['\u000B\u001D\u002B\u0045','\\rangle','close'],
+   ['\u000C\u0042','|','bar'],['\u000D\u0043','\\|','bar'],['\u0004\u0016\u0024\u0034','\\lfloor','open'],['\u0005\u0017\u0025\u0035','\\rfloor','close'],['\u0006\u0018\u0026\u0036','\\lceil','open'],['\u0007\u0019\u0027\u0037','\\rceil','close'],
+   ['PX','\\sum','op'],['QY','\\prod','op'],['RZ','\\int','int'],['HI','\\oint','int'],['S[','\\bigcup','op'],['T\\','\\bigcap','op'],['NO','\\bigotimes','op'],['LM','\\bigoplus','op'],['pqrst','\\sqrt','sqrt']
+  ].forEach(([cs, tex, role]) => { for (const c of cs) EXT[c] = {tex, role}; });
+  // extension fonts that use real Unicode (Latin Modern, STIX, Cambria Math, ...)
+  const UNI = {'∑':['\\sum','op'],'∏':['\\prod','op'],'∐':['\\coprod','op'],'⋃':['\\bigcup','op'],'⋂':['\\bigcap','op'],'⨁':['\\bigoplus','op'],'⨂':['\\bigotimes','op'],'∫':['\\int','int'],'∬':['\\iint','int'],'∭':['\\iiint','int'],'∮':['\\oint','int'],'√':['\\sqrt','sqrt'],
+    '(':['(','open'],')':[')','close'],'[':['[','open'],']':[']','close'],'{':['\\{','open'],'}':['\\}','close'],'⟨':['\\langle','open'],'⟩':['\\rangle','close'],'〈':['\\langle','open'],'〉':['\\rangle','close'],'|':['|','bar'],'‖':['\\|','bar'],'∣':['|','bar'],
+    '⌊':['\\lfloor','open'],'⌋':['\\rfloor','close'],'⌈':['\\lceil','open'],'⌉':['\\rceil','close'],
+    '⎛':['(','open'],'⎞':[')','close'],'⎡':['[','open'],'⎤':[']','close'],'⎧':['\\{','open'],'⎫':['\\}','close'],'⌠':['\\int','int'],
+    '\uF8EB':['(','open'],'\uF8F6':[')','close'],'\uF8EE':['[','open'],'\uF8F9':[']','close'],'\uF8F1':['\\{','open'],'\uF8FC':['\\}','close'],
+    '\uF8EC':['','piece'],'\uF8ED':['','piece'],'\uF8F7':['','piece'],'\uF8F8':['','piece'],'\uF8EF':['','piece'],'\uF8F0':['','piece'],'\uF8FA':['','piece'],'\uF8FB':['','piece'],
+    '\uF8F2':['','piece'],'\uF8F3':['','piece'],'\uF8F4':['','piece'],'\uF8FD':['','piece'],'\uF8FE':['','piece'],'\uF8E5':['','piece'],'\uF8E6':['','piece'],'\uF8E7':['','piece'],
+    '⎜':['','piece'],'⎝':['','piece'],'⎟':['','piece'],'⎠':['','piece'],'⎢':['','piece'],'⎣':['','piece'],'⎥':['','piece'],'⎦':['','piece'],'⎨':['','piece'],'⎩':['','piece'],'⎪':['','piece'],'⎬':['','piece'],'⎭':['','piece'],'⎮':['','piece'],'⌡':['','piece']};
+  const EXT_SIZE = c => { // total height (em) of cmex sizes
+    const k = c.charCodeAt(0);
+    if (k <= 0x0F) return 1.2; if (k <= 0x11) return 1.8; if (k <= 0x1F) return 2.4; if (k <= 0x2F) return 3.0;
+    if (k >= 0x70 && k <= 0x74) return [1.0, 1.2, 1.8, 2.4, 3.0][k - 0x70];
+    return 1.4;
+  };
+  const MATENV = {'(':'pmatrix','[':'bmatrix','\\{':'Bmatrix','|':'vmatrix','\\|':'Vmatrix'};
+  const OPS_RE = /^[=+\-−<>≤≥≈∼≡,;]$/;
+  const TAG_RE = /^\((\d+[a-z]?|[A-Z]?\d+(\.\d+)*[a-z]?)\)$/;
+  const median = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+
+  let fontNames = {};
+  const fam = it => {
+    const n = fontNames[it.f] || '';
+    if (/CMEX|esint/i.test(n)) return 'xc';                                       // code-based extension font
+    if (/MathExtension|txex|pxex|Extension|Euclid.*Extra/i.test(n)) return 'xu'; // unicode extension font
+    if (it.ext && !n) return /[\u0000-\u001F]/.test(it.s) || /^[PQRSTXYZpqrst]$/.test(it.s.trim()) ? 'xc' : 'xu';
+    if (/Bold|CMBX|BX\d/i.test(n) && !/Italic/i.test(n)) return 'bf';
+    if (/CMSY|MathSymbols|txsy|pxsy|Symbol/i.test(n)) return 'sy';
+    if (/CMMI|MathItalic|txmi|pxmi|Italic|Oblique/i.test(n)) return 'mi';
+    return 'r';
+  };
+  const isExt = f => f === 'xc' || f === 'xu';
+  const why = (flags, r) => { flags.bad++; (flags.why = flags.why || []).push(r); };
+
+  // ---- characters -> LaTeX (with accents attached to the right letter) ----
+  function texText(s, f, flags) {
+    const atoms = []; let pendingAcc = null, k = 0;
+    const push = a => { if (pendingAcc) { a = pendingAcc + '{' + a + '}'; pendingAcc = null; } atoms.push(a); };
+    while (k < s.length) {
+      const c = s[k];
+      if (ACCENT[c]) {
+        const next = s[k + 1];
+        if (next && (/[A-Za-z]/.test(next) || GREEK[next])) pendingAcc = ACCENT[c];
+        else if (atoms.length) atoms[atoms.length - 1] = ACCENT[c] + '{' + atoms[atoms.length - 1] + '}';
+        k++; continue;
+      }
+      if (/[A-Za-z]/.test(c)) {
+        let j = k; while (j < s.length && /[A-Za-z]/.test(s[j])) j++;
+        const word = s.slice(k, j);
+        if (FUNCS.has(word)) push('\\' + word + ' ');
+        else if (word === 'Re' || word === 'Im') push('\\mathrm{' + word + '}');
+        else if (f === 'r' && word.length >= 2) push(word.length >= 4 ? '\\text{' + word + '}' : '\\mathrm{' + word + '}');
+        else if (f === 'bf') push('\\mathbf{' + word + '}');
+        else for (const ch of word) push(ch);
+        k = j; continue;
+      }
+      if (/[0-9.,:;!?()\[\]|=+<>\/'*-]/.test(c)) push(c);
+      else if (/\s/.test(c)) { if (f === 'r' && /[A-Za-z]{4,}/.test(s)) atoms.push('\\ '); }
+      else if (GREEK[c]) push(f === 'bf' ? '\\boldsymbol{' + GREEK[c] + '}' : GREEK[c] + ' ');
+      else if (SYM[c] !== undefined) push(SYM[c]);
+      else if (/[\uE000-\uF8FF\uFFFD\u0000-\u001F]/.test(c)) why(flags, 'char ' + c.charCodeAt(0).toString(16));
+      else push(c);
+      k++;
+    }
+    return atoms.join('');
+  }
+
+  // ---- tokens ----
+  function splitAccents(list) {
+    const out = [];
+    list.forEach(i => {
+      if (i.kind || !i.s || i.s.trim().length < 2 || ![...i.s].some(c => ACCENT[c])) { out.push(i); return; }
+      const chars = [...i.s], n = chars.length, cw = i.w / n;
+      let buf = '', bx = 0;
+      chars.forEach((c, k) => {
+        const loose = ACCENT[c] && !(/[A-Za-zα-ωΑ-Ω]/.test(chars[k + 1] || ''));
+        if (loose) {
+          if (buf.trim()) out.push({...i, s: buf, x: i.x + bx * cw, w: buf.length * cw});
+          out.push({...i, s: c, x: i.x + k * cw, w: cw}); buf = ''; bx = k + 1;
+        } else buf += c;
+      });
+      if (buf.trim()) out.push({...i, s: buf, x: i.x + bx * cw, w: buf.length * cw});
+    });
+    return out;
+  }
+  function tokenize(list, flags) {
+    return splitAccents(list).filter(i => i.kind || i.s.trim()).map(i => {
+      if (i.kind) return i;                                      // already built (fraction, matrix…)
+      const f = fam(i), c = i.s.trim();
+      const t = {it: i, x: i.x, x2: i.x + i.w, y: i.y, h: i.h, s: i.s, f, sub: [], sup: [], kind: 'text'};
+      if (f === 'xc') { const e = EXT[c] || EXT[c[0]]; if (e) { t.kind = e.role; t.tex = e.tex; t.size = EXT_SIZE(c); } else { t.kind = 'junk'; why(flags, 'ext ' + c.charCodeAt(0).toString(16)); } }
+      else if (f === 'xu') { const e = UNI[c] || UNI[c[0]]; if (e) { t.tex = e[0]; t.kind = e[1]; } }
+      else if (c.length === 1 && UNI[c] && ['op', 'int', 'sqrt'].includes(UNI[c][1])) { t.tex = UNI[c][0]; t.kind = UNI[c][1]; }
+      else if (c.length === 1 && ACCENT[c]) t.kind = 'accent';
+      return t;
+    });
+  }
+
+  // ---- one equation row -> LaTeX ----
+  function row(list, depth, flags, rules) {
+    let toks = tokenize(list, flags);
+    if (!toks.length) return '';
+    if (depth > 8) { why(flags, 'depth'); return ''; }
+    const plain = toks.filter(t => t.kind === 'text' && !isExt(t.f));
+    const hist = {};
+    (plain.length ? plain : toks).forEach(t => { const k = Math.round(t.h * 2) / 2; hist[k] = (hist[k] || 0) + Math.max(1, (t.s || 'x').trim().length); });
+    const sizes = Object.entries(hist).map(([k, v]) => [+k, v]);
+    const total = sizes.reduce((a, b) => a + b[1], 0);
+    const main = Math.max(...sizes.filter(([, v]) => v >= total * 0.2).map(([k]) => k));
+    const isSmall = t => t.kind === 'text' && !isExt(t.f) && t.h < main * 0.86;
+    toks.forEach(t => { t.small = isSmall(t); });
+    const relTok = toks.filter(t => t.kind === 'text' && !t.small && /^[\s)]*[=≈<>≤≥∼≡]/.test(t.s)).sort((a, b) => a.x - b.x)[0];  // the leftmost relation sets the baseline
+    const base = relTok ? relTok.y : median(toks.filter(t => t.kind === 'text' && !t.small).map(t => t.y).concat(toks.filter(t => t.kind === 'frac').map(t => t.y - 0.25 * main)));
+    const yMid = t => t.kind === 'sqrt' ? (t.rule ? t.rule.y - 0.6 * main : t.y - 0.5 * t.h)
+      : isExt(t.f) && t.size ? t.y + 0.04 * t.h - t.size * t.h / 2
+      : isExt(t.f) ? t.y - 0.4 * t.h
+      : (t.kind === 'frac' || t.kind === 'mat') ? t.y : t.y + 0.25 * t.h;
+
+    // 1. standalone accents sit above their letter
+    toks.filter(t => t.kind === 'accent').forEach(a => {
+      const cx = (a.x + a.x2) / 2;
+      const tgt = toks.filter(t => t !== a && t.kind === 'text' && !t.small && cx >= t.x - 0.5 && cx <= t.x2 + 0.5 && a.y >= t.y - 0.6 && a.y - t.y < 1.3 * main)
+        .sort((p, q) => Math.abs((p.x + p.x2) / 2 - cx) - Math.abs((q.x + q.x2) / 2 - cx))[0];
+      if (tgt) tgt.acc = ACCENT[a.s.trim()]; else why(flags, 'accent');
+      a.drop = true;
+    });
+    toks = toks.filter(t => !t.drop);
+
+    // 2. fraction bars (shortest first so nested fractions resolve inside-out) and radical overlines
+    if (rules && rules.length) {
+      const minx = Math.min(...toks.map(t => t.x)), maxx = Math.max(...toks.map(t => t.x2));
+      const ys = toks.map(t => t.y), miny = Math.min(...ys), maxy = Math.max(...ys);
+      let rs = rules.filter(r => !r.taken && r.x1 >= minx - 3 && r.x2 <= maxx + 3 && r.y > miny - 1.5 * main && r.y < maxy + 1.5 * main);
+      toks.filter(t => t.kind === 'sqrt' && !t.rule).forEach(sq => {
+        const r = rs.find(r => !r.taken && Math.abs(r.x1 - sq.x2) < 2.5 && r.y > sq.y - 2.2 * main);
+        if (r) { r.taken = true; sq.rule = r; }
+      });
+      rs = rs.filter(r => !r.taken).sort((a, b) => (a.x2 - a.x1) - (b.x2 - b.x1));
+      for (const r of rs) {
+        const inside = t => { const cx = (t.x + t.x2) / 2; return cx >= r.x1 - 0.5 && cx <= r.x2 + 0.5; };
+        const above = toks.filter(t => inside(t) && yMid(t) > r.y && yMid(t) - r.y < 2.6 * main);
+        const below = toks.filter(t => inside(t) && yMid(t) < r.y && r.y - yMid(t) < 2.6 * main);
+        if (!above.length || !below.length) continue;
+        r.taken = true;
+        const small = median(above.concat(below).filter(t => t.kind === 'text').map(t => t.h)) < main * 0.86;
+        const fr = {kind: 'frac', x: r.x1, x2: r.x2, y: r.y, h: main, num: above, den: below, sub: [], sup: [], small, f: 'r', s: ''};
+        toks = toks.filter(t => !above.includes(t) && !below.includes(t)); toks.push(fr);
+      }
+      toks.filter(t => t.kind === 'sqrt' && t.rule && !t.rad).forEach(sq => {
+        const r = sq.rule;
+        const rad = toks.filter(t => t !== sq && (t.x + t.x2) / 2 > r.x1 - 0.5 && (t.x + t.x2) / 2 < r.x2 + 0.5 && t.y < r.y + 0.3 && r.y - t.y < 2.4 * main);
+        sq.rad = rad; sq.x2 = Math.max(sq.x2, r.x2);
+        toks = toks.filter(t => !rad.includes(t));
+      });
+    }
+
+    // 3. matrices / cases: rows inside big delimiters with no bar between them
+    const delims = toks.filter(t => (t.kind === 'open' || t.kind === 'close') && isExt(t.f)).sort((a, b) => a.x - b.x);
+    const pairs = []; const stack = [];
+    delims.forEach(d => { if (d.kind === 'open') stack.push(d); else if (stack.length) pairs.push([stack.pop(), d]); });
+    const unmatched = stack.filter(o => o.tex === '\\{');
+    const makeMatrix = (o, c, env) => {
+      const xEnd = c ? c.x + 0.5 : Infinity;
+      const content = toks.filter(t => t !== o && t !== c && t.x >= o.x2 - 0.5 && t.x2 <= xEnd && !(t.kind === 'text' && TAG_RE.test(t.s.trim()) && !c));
+      const big = content.filter(t => !t.small);
+      const ys = [...new Set(big.map(t => Math.round(yMid(t))))].sort((a, b) => b - a);
+      const bands = [];
+      ys.forEach(y => { const b = bands[bands.length - 1]; if (b && b.lo - y < 0.9 * main) b.lo = y; else bands.push({hi: y, lo: y}); });
+      if (bands.length < 2) return false;
+      const rowsT = bands.map(() => []);
+      content.forEach(t => { const y = yMid(t); let best = 0, bd = Infinity; bands.forEach((b, k) => { const d = y > b.hi ? y - b.hi : y < b.lo ? b.lo - y : 0; if (d < bd) { bd = d; best = k; } }); rowsT[best].push(t); });
+      const rowsCells = rowsT.map(r => {
+        r.sort((a, b) => a.x - b.x);
+        const cells = [[]]; let prev = null;
+        r.forEach(t => { if (prev && !t.small && t.x - prev.x2 > 0.9 * main) cells.push([]); cells[cells.length - 1].push(t); if (!t.small) prev = t; });
+        if (env === 'cases' && cells.length > 2) { const first = cells.shift(); return [first, cells.flat()]; }
+        return cells;
+      });
+      const mat = {kind: 'mat', env, rows: rowsCells, x: o.x, x2: c ? c.x2 : Math.max(...content.map(t => t.x2)), y: base + 0.25 * main, h: main, sub: c ? c.sub : [], sup: c ? c.sup : [], f: 'r', s: ''};
+      toks = toks.filter(t => t !== o && t !== c && !content.includes(t)); toks.push(mat);
+      return true;
+    };
+    pairs.sort((a, b) => (a[1].x - a[0].x) - (b[1].x - b[0].x)).forEach(([o, c]) => {
+      if (toks.includes(o) && toks.includes(c)) makeMatrix(o, c, MATENV[o.tex] || 'matrix');
+    });
+    unmatched.forEach(o => { if (toks.includes(o)) makeMatrix(o, null, 'cases'); });
+
+    // 4. levels for anything still stacked (fractions drawn without a detectable bar)
+    const norm = toks.filter(t => !t.small);
+    norm.forEach(t => {
+      const r = (yMid(t) - (base + 0.25 * main)) / main;
+      t.level = ['op', 'int', 'piece', 'junk'].includes(t.kind) ? 'base' : r > 0.45 ? 'num' : r < -0.45 ? 'den' : 'base';
+    });
+    toks.filter(t => t.kind === 'op' || t.kind === 'int').forEach(op => {
+      const n = norm.filter(t => t !== op && t.x >= op.x2 - 0.5 && t.kind !== 'op' && t.kind !== 'int').sort((a, b) => a.x - b.x)[0];
+      op.level = n ? n.level : 'base';
+    });
+    // delimiters take the level of what they enclose (unless we know their exact size)
+    toks.filter(t => ['open', 'close', 'bar'].includes(t.kind) && !(t.f === 'xc' && !(rules && rules.length))).forEach(d => {
+      const inner = norm.filter(t => !['open', 'close', 'bar', 'piece', 'junk'].includes(t.kind) && (d.kind === 'close' ? t.x2 <= d.x + 0.5 : t.x >= d.x2 - 0.5))
+        .sort((a, b) => d.kind === 'close' ? b.x2 - a.x2 : a.x - b.x)[0];
+      d.level = inner ? inner.level : 'base';
+    });
+    const levelBase = {};
+    ['base', 'num', 'den'].forEach(L => { const ys = norm.filter(t => t.level === L && t.kind === 'text').map(t => t.y); levelBase[L] = ys.length ? median(ys) : base; });
+
+    let smalls = toks.filter(t => t.small);
+    const used = new Set();
+    // 5. limits of big operators
+    toks.filter(t => t.kind === 'op' || t.kind === 'int').forEach(op => {
+      smalls.forEach(s => {
+        if (used.has(s)) return;
+        const cx = (s.x + s.x2) / 2;
+        const inLim = op.kind === 'op' ? cx >= op.x - 0.3 * main && cx <= op.x2 + 0.3 * main
+                                       : s.x >= op.x + 0.15 * (op.x2 - op.x) && s.x <= op.x2 + 0.8 * main;
+        if (!inLim) return;
+        const lb = levelBase[op.level];
+        if (s.y > lb + 0.15 * main) op.sup.push(s); else if (s.y < lb - 0.05 * main) op.sub.push(s); else return;
+        used.add(s);
+      });
+    });
+    smalls = smalls.filter(s => !used.has(s));
+    // 6. a sub+sup pair stacked on one base (E_y^*), or a small fraction drawn without a bar
+    const clusters = [];
+    smalls.slice().sort((a, b) => a.x - b.x).forEach(s => {
+      const c = clusters.find(c => s.x < c.x2 + 0.5 && s.x2 > c.x - 0.5);
+      if (c) { c.m.push(s); c.x = Math.min(c.x, s.x); c.x2 = Math.max(c.x2, s.x2); } else clusters.push({x: s.x, x2: s.x2, m: [s]});
+    });
+    clusters.forEach(c => {
+      const ys = [...new Set(c.m.map(s => Math.round(s.y)))].sort((a, b) => b - a);
+      let gapAt = -1, gap = 0;
+      for (let k = 1; k < ys.length; k++) if (ys[k - 1] - ys[k] > gap) { gap = ys[k - 1] - ys[k]; gapAt = k; }
+      const sh = median(c.m.map(s => s.h));
+      if (gapAt < 0 || gap < 0.45 * sh) return;
+      const cut = (ys[gapAt - 1] + ys[gapAt]) / 2;
+      const upper = c.m.filter(s => s.y > cut), lower = c.m.filter(s => s.y <= cut);
+      const my = median(c.m.map(s => s.y));
+      const L = toks.filter(t => !t.small && t.x2 <= c.x + 1 && (isExt(t.f) || t.kind !== 'text' || Math.abs(t.y - my) < main)).sort((a, b) => b.x2 - a.x2)[0];
+      const scriptable = L && c.x - L.x2 < 0.4 * main && (L.kind === 'text' ? !/[=+\-−<>≤≥≈∼≡,;(\[{]$/.test(L.s.trim()) : ['close', 'bar', 'frac', 'mat', 'sqrt'].includes(L.kind));
+      if (scriptable) { L.sup.push(...upper); L.sub.push(...lower); }
+      else {
+        const r = (cut - (base + 0.25 * main)) / main;
+        toks.push({kind: 'frac', small: false, tiny: true, x: c.x, x2: c.x2, y: cut, h: sh, num: upper, den: lower, sub: [], sup: [], level: r > 0.45 ? 'num' : r < -0.45 ? 'den' : 'base', f: 'r', s: ''});
+        if (rules && rules.length) flags.low++;
+      }
+      c.m.forEach(s => used.add(s));
+    });
+    smalls = smalls.filter(s => !used.has(s));
+    // 7. remaining scripts attach to the glyph on their left
+    smalls.forEach(s => {
+      const cands = toks.filter(t => !t.small && !used.has(t) && t.x2 <= s.x + 1.5 && (isExt(t.f) || t.kind !== 'text' || Math.abs(t.y - s.y) < 0.95 * main));
+      const L = cands.sort((a, b) => b.x2 - a.x2)[0];
+      if (!L) { s.small = false; s.level = 'base'; return; }
+      const ref = L.kind === 'text' && !isExt(L.f) ? L.y : (L.kind === 'frac' || L.kind === 'mat') ? L.y - 0.25 * main : levelBase[L.level || 'base'];
+      const lh = L.kind === 'text' && !isExt(L.f) ? L.h : main;
+      if (s.y > ref + 0.15 * lh) L.sup.push(s);
+      else if (s.y < ref - 0.05 * lh) L.sub.push(s);
+      else { s.small = false; s.level = L.level || 'base'; return; }
+      used.add(s);
+    });
+
+    const flat = toks.filter(t => !used.has(t)).sort((a, b) => a.x - b.x || b.y - a.y);
+
+    const scripts = t => (t.sub.length ? '_{' + row(t.sub, depth + 1, flags, rules) + '}' : '') + (t.sup.length ? '^{' + row(t.sup, depth + 1, flags, rules) + '}' : '');
+    const emitTok = t => {
+      switch (t.kind) {
+        case 'frac': return ((t.small || t.tiny) ? '\\tfrac{' : '\\frac{') + row(t.num, depth + 1, flags, rules) + '}{' + row(t.den, depth + 1, flags, rules) + '}' + scripts(t);
+        case 'mat': {
+          const body = t.rows.map(r => r.map(cell => row(cell, depth + 1, flags, rules)).join(' & ')).join(' \\\\ ');
+          return '\\begin{' + t.env + '} ' + body + ' \\end{' + t.env + '}' + scripts(t) + ' ';
+        }
+        case 'open': return '\\left' + t.tex + ' ';
+        case 'close': return '\\right' + t.tex + scripts(t) + ' ';
+        case 'bar': return t.tex + scripts(t);
+        case 'op': return t.tex + '\\limits' + scripts(t) + ' ';
+        case 'int': return t.tex + scripts(t) + ' ';
+        case 'sqrt': return '\\sqrt{' + (t.rad ? row(t.rad, depth + 1, flags, rules) : '') + '}' + scripts(t);
+        case 'junk': case 'piece': return '';
+        default: {
+          let tx = texText(t.s, t.f, flags);
+          if (t.acc) tx = t.acc + '{' + tx + '}';
+          return tx + scripts(t);
+        }
+      }
+    };
+    const ex2 = t => Math.max(t.x2, ...t.sub.map(q => q.x2), ...t.sup.map(q => q.x2));
+    const emitSeq = list => {
+      let out = '', prev = null;
+      for (let k = 0; k < list.length; k++) {
+        const t = list[k];
+        if (t.kind === 'sqrt' && !t.rad) { // no overline found: take what follows up to an operator
+          const rad = [];
+          let j = k + 1, end = t.x2;
+          while (j < list.length && list[j].x < end + 0.45 * main && !(list[j].kind === 'text' && OPS_RE.test(list[j].s.trim()))) { rad.push(list[j]); end = list[j].x2; j++; }
+          t.rad = rad; out += emitTok(t); prev = list[j - 1] || t; k = j - 1; continue;
+        }
+        if (prev && prev.kind !== 'op' && prev.kind !== 'int' && t.x - ex2(prev) > 1.4 * main && depth === 0) out += '\\quad ';
+        out += emitTok(t); prev = t;
+      }
+      return out;
+    };
+
+    let out = '', k = 0, tag = '';
+    if (depth === 0) {
+      const last = flat[flat.length - 1];
+      const m = last && last.kind === 'text' && last.s.trim().match(TAG_RE);
+      if (m && flat.length > 1 && last.x - flat[flat.length - 2].x2 > 2 * main) { tag = '\\tag{' + m[1] + '}'; flat.pop(); }
+    }
+    const pending = [];
+    const flushBase = () => { if (pending.length) out += emitSeq(pending.splice(0)); };
+    while (k < flat.length) {
+      const t = flat[k];
+      if (!t.level || t.level === 'base') { pending.push(t); k++; continue; }
+      flushBase();
+      let x2 = t.x2; const grp = [t]; k++;
+      while (k < flat.length && flat[k].level && flat[k].level !== 'base' && flat[k].x < x2 + 0.6 * main) { grp.push(flat[k]); x2 = Math.max(x2, flat[k].x2); k++; }
+      const num = grp.filter(g => g.level === 'num'), den = grp.filter(g => g.level === 'den');
+      if (num.length && den.length) { out += '\\frac{' + emitSeq(num) + '}{' + emitSeq(den) + '}'; if (rules && rules.length) flags.low++; }
+      else { why(flags, 'orphan ' + grp.map(g => g.level + ':' + (g.s || g.kind)).join(',')); out += emitSeq(grp); }
+    }
+    flushBase();
+    return out + tag;
+  }
+
+  // split a block into equation rows (by equation numbers, else by vertical gaps), rebuild each
+  function build(items, names, rules) {
+    fontNames = names || {};
+    const flags = {bad: 0, low: 0};
+    (rules || []).forEach(r => { r.taken = false; });
+    items = items.filter(i => i.s && i.s.trim());
+    const normal = items.filter(i => !isExt(fam(i)));
+    if (!normal.length) return {rows: [], ok: false};
+    const hs = normal.map(i => i.h), main = Math.max(...hs.filter(h => h >= median(hs) * 0.9));
+    const vy = i => isExt(fam(i)) ? i.y - i.h : i.y;
+    const maxX = Math.max(...items.map(i => i.x + i.w));
+    const tags = normal.filter(i => TAG_RE.test(i.s.trim()) && i.x + i.w > maxX - 2);
+    let bands;
+    if (tags.length >= 2) bands = tags.map(t => ({hi: t.y, lo: t.y})).sort((a, b) => b.hi - a.hi);
+    else {
+      const ys = [...new Set(normal.filter(i => i.h >= main * 0.86).map(i => i.y))].sort((a, b) => b - a);
+      bands = [];
+      ys.forEach(y => { const b = bands[bands.length - 1]; if (b && b.lo - y < 1.6 * main) b.lo = y; else bands.push({hi: y, lo: y}); });
+    }
+    const rowsItems = bands.map(() => []);
+    items.forEach(i => {
+      const y = vy(i);
+      let best = 0, bd = Infinity;
+      bands.forEach((b, k) => { const d = y > b.hi ? y - b.hi : y < b.lo ? b.lo - y : 0; if (d < bd) { bd = d; best = k; } });
+      rowsItems[best].push(i);
+    });
+    const rows = rowsItems.map(r => {
+      let tex = row(r, 0, flags, rules).replace(/\s+/g, ' ').trim();
+      const l = (tex.match(/\\left/g) || []).length, rr = (tex.match(/\\right/g) || []).length;
+      if (l !== rr) tex = tex.replace(/\\left/g, '').replace(/\\right/g, '');
+      return tex;
+    }).filter(Boolean);
+    return {rows, ok: flags.bad === 0 && flags.low === 0 && rows.length > 0, why: flags.why || (flags.low ? ['no bar'] : [])};
+  }
+
+  // thin filled rectangles / horizontal strokes on a page = fraction bars and radical overlines
+  async function pageRules(page, OPS, offset) {
+    const ol = await page.getOperatorList();
+    const rules = []; let ctm = [1, 0, 0, 1, 0, 0]; const stack = []; let pending = [];
+    const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+    const ap = (x, y) => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]];
+    const [ox, oy] = offset || [0, 0];
+    for (let k = 0; k < ol.fnArray.length; k++) {
+      const fn = ol.fnArray[k], a = ol.argsArray[k];
+      if (fn === OPS.save) stack.push(ctm.slice());
+      else if (fn === OPS.restore) ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
+      else if (fn === OPS.transform) ctm = mul(ctm, a);
+      else if (fn === OPS.paintFormXObjectBegin) { stack.push(ctm.slice()); if (a && a[0]) ctm = mul(ctm, a[0]); }
+      else if (fn === OPS.paintFormXObjectEnd) ctm = stack.pop() || [1, 0, 0, 1, 0, 0];
+      else if (fn === OPS.constructPath) {
+        const ops = a[0], args = a[1]; let j = 0, cur = null;
+        for (const op of ops) {
+          if (op === OPS.rectangle) { const [x, y, w, h] = args.slice(j, j + 4); j += 4; const p1 = ap(x, y), p2 = ap(x + w, y + h); pending.push({x1: Math.min(p1[0], p2[0]), x2: Math.max(p1[0], p2[0]), y1: Math.min(p1[1], p2[1]), y2: Math.max(p1[1], p2[1])}); }
+          else if (op === OPS.moveTo) { cur = ap(args[j], args[j + 1]); j += 2; }
+          else if (op === OPS.lineTo) { const p = ap(args[j], args[j + 1]); j += 2; if (cur && Math.abs(p[1] - cur[1]) < 0.5 && Math.abs(p[0] - cur[0]) > 2) pending.push({x1: Math.min(p[0], cur[0]), x2: Math.max(p[0], cur[0]), y1: p[1] - 0.2, y2: p[1] + 0.2}); cur = p; }
+          else if (op === OPS.curveTo) j += 6;
+          else if (op === OPS.curveTo2 || op === OPS.curveTo3) j += 4;
+        }
+      } else if ([OPS.fill, OPS.eoFill, OPS.stroke, OPS.closeStroke, OPS.fillStroke, OPS.eoFillStroke, OPS.closeFillStroke, OPS.closeEOFillStroke].includes(fn)) {
+        for (const r of pending) { const h = r.y2 - r.y1, w = r.x2 - r.x1; if (h < 1.6 && w > 2 && w > h * 4) rules.push({x1: r.x1 - ox, x2: r.x2 - ox, y: (r.y1 + r.y2) / 2 - oy}); }
+        pending = [];
+      } else if (fn === OPS.endPath) pending = [];
+    }
+    return rules;
+  }
+  return {build, pageRules};
+})();
+
+
 </script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -755,8 +1260,8 @@ const DEFAULTS = {font:'Literata', size:18, lh:1.6, ls:0, ws:0, measure:68, them
   focus:false, ruler:false, skim:false, acronyms:true, hideRefs:true, hideEq:false, rsvpWpm:250, rsvpChunk:1};
 const PRESETS = {
   normal: {...DEFAULTS},
-  tired:  {...DEFAULTS, font:'Atkinson Hyperlegible', size:20, lh:1.85, ls:0.02, ws:0.1, measure:60, theme:'cream', bold:0.4, gradient:true, hideEq:true},
-  very:   {...DEFAULTS, font:'OpenDyslexic', size:20, lh:2.05, ls:0.03, ws:0.2, measure:52, theme:'cream', bold:0.45, gradient:true, focus:true, skim:true, hideEq:true},
+  tired:  {...DEFAULTS, font:'Atkinson Hyperlegible', size:20, lh:1.85, ls:0.02, ws:0.1, measure:60, theme:'cream', bold:0.4, gradient:true},
+  very:   {...DEFAULTS, font:'OpenDyslexic', size:20, lh:2.05, ls:0.03, ws:0.2, measure:52, theme:'cream', bold:0.45, gradient:true, focus:true, skim:true},
 };
 const MARKUP_KEYS = new Set(['bold','tint','acronyms','skim','hideRefs','hideEq']);
 let S = {...DEFAULTS};
@@ -807,7 +1312,10 @@ $$('[data-preset]').forEach(b => b.addEventListener('click', () => { TRACK.prese
 // ---------- document state ----------
 let DOC = null; // {name, blocks, acr}
 
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MARKS = /[\uE000-\uE003]/;
+const scriptHTML = t => esc(t).replace(/\uE000/g, '<sub>').replace(/\uE001/g, '</sub>').replace(/\uE002/g, '<sup>').replace(/\uE003/g, '</sup>');
+const unmark = t => String(t).replace(/[\uE000-\uE003]/g, '');
 const TINT = {b:'tl-b', d:'tl-d', p:'tl-p', q:'tl-q'};
 function chars(s) {
   if (!S.tint) return esc(s);
@@ -820,6 +1328,14 @@ function wordsHTML(text) {
   return text.split(/(\s+)/).map(tok => {
     if (!tok) return '';
     if (/^\s+$/.test(tok)) return ' ';
+    if (MARKS.test(tok)) {   // word with sub/superscripts: bold only the plain start, keep scripts intact
+      const opens = (tok.match(/[\uE000\uE002]/g) || []).length, closes = (tok.match(/[\uE001\uE003]/g) || []).length;
+      if (opens !== closes) return `<span class="w">${chars(unmark(tok))}</span>`;
+      const head = tok.split(MARKS)[0], rest = tok.slice(head.length);
+      const hm = head.match(/^([^\p{L}\p{N}]*)(.*)$/u);
+      const k = S.bold > 0 && hm[2] ? Math.min(hm[2].length, Math.max(1, Math.round(hm[2].length * S.bold))) : 0;
+      return `<span class="w">${esc(hm[1])}${k ? '<b>' + chars(hm[2].slice(0, k)) + '</b>' : ''}${chars(hm[2].slice(k))}${scriptHTML(rest)}</span>`;
+    }
     const m = tok.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u);
     const lead = m[1], core = m[2], trail = m[3];
     let inner;
@@ -845,11 +1361,123 @@ function blockHTML(b, i) {
     case 'cap': return `<p ${a.replace('BTYPE','cap')}>${wordsHTML(b.text)}</p>`;
     case 'ref': return `<p ${a.replace('BTYPE','ref')}>${wordsHTML(b.text)}</p>`;
     case 'eq': return S.hideEq
-      ? `<details class="blk eq" data-i="${i}"><summary>Equation (extracted text may be garbled)</summary><div class="eqraw">${esc(b.text)}</div></details>`
-      : `<p ${a.replace('BTYPE','')}><span class="eqraw">${esc(b.text)}</span></p>`;
+      ? `<details class="blk eq" data-i="${i}"><summary>Equation</summary>${EQV.inner(b)}</details>`
+      : `<div class="blk eq" data-i="${i}">${EQV.inner(b)}</div>`;
     default: return `<p ${a.replace('BTYPE','')}>${wordsHTML(b.text)}</p>`;
   }
 }
+
+// ---------- equations on the page: KaTeX, with the original snapshot as a fallback ----------
+const EQV = (() => {
+  const TAG = /^\(\s*\d+[a-z]?\s*\)$/;
+  const median = a => { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+  const katexHTML = tex => {
+    if (typeof katex === 'undefined') return null;
+    try { return katex.renderToString(tex, {displayMode: true, throwOnError: true, strict: 'ignore', output: 'html'}); }
+    catch (e) { return null; }
+  };
+  function view(b) {
+    if (b.view) return b.view;
+    if (b.tex && b.ok !== false && b.texOk !== false) return 'tex';
+    if (b.img) return 'img';
+    if (b.tex && b.texOk !== false) return 'tex';
+    return b.items && !b.done ? 'pending' : 'raw';
+  }
+  function inner(b) {
+    let v = view(b), body = '';
+    if (v === 'tex') {
+      const parts = b.tex.map(katexHTML);
+      if (parts.some(p => p === null)) { b.texOk = false; b.view = b.img ? 'img' : 'raw'; v = b.view; }
+      else body = parts.join('');
+    }
+    if (v === 'img') body = `<img class="eq-img" src="${b.img}" alt="Equation from the original PDF" style="width:${b.imgEm.toFixed(2)}em">`;
+    else if (v === 'pending') body = '<div class="eq-pending">Typesetting equation…</div>';
+    else if (v === 'raw') body = `<span class="eqraw">${esc(b.text)}</span>`;
+    const tools = [];
+    if (b.tex && b.texOk !== false && b.img) tools.push(`<button class="eq-btn" data-eq="toggle">${v === 'img' ? 'Show as LaTeX' : 'Show original'}</button>`);
+    if (b.tex && b.texOk !== false) tools.push('<button class="eq-btn" data-eq="copy">Copy LaTeX</button>');
+    let note = '';
+    if (v === 'tex' && b.ok === false) note = '<span class="eq-note">Rebuilt from the PDF, may contain mistakes</span>';
+    if (v === 'img' && b.tex && b.ok === false) note = '<span class="eq-note">Showing the original: the rebuilt LaTeX looked unreliable</span>';
+    return `<div class="eq-body">${body}</div>` + (tools.length || note ? `<div class="eq-tools">${note}${tools.join('')}</div>` : '');
+  }
+  function refresh(i) {
+    const el = docEl.querySelector(`.blk[data-i="${i}"]`);
+    if (!el) return;
+    const wasCur = el.classList.contains('cur'), wasOpen = el.open;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = blockHTML(DOC.blocks[i], i);
+    const fresh = tmp.firstElementChild;
+    if (fresh.dataset.i === undefined) fresh.dataset.i = i;
+    if (wasCur) fresh.classList.add('cur');
+    if (wasOpen) fresh.open = true;
+    el.replaceWith(fresh);
+  }
+  // cut the equation out of a rendered page
+  function crop(canvas, items, scale, H, b) {
+    const its = items.filter(it => it.s.trim());
+    const maxX = Math.max(...its.map(i => i.x + i.w));
+    const body = its.filter(i => !(TAG.test(i.s.trim()) && i.x + i.w > maxX - 2));
+    if (!body.length) return null;
+    const main = median(body.filter(i => !i.ext).map(i => i.h)) || 10;
+    const pad = 0.45 * main;
+    const x1 = Math.min(...body.map(i => i.x)) - pad, x2 = Math.max(...body.map(i => i.x + i.w)) + pad;
+    const top = Math.max(...body.map(i => i.ext ? i.y + 0.2 * i.h : i.y + 0.85 * i.h)) + pad;
+    const bot = Math.min(...body.map(i => i.ext ? i.y - 1.3 * i.h : i.y - 0.3 * i.h)) - pad;
+    const sx = Math.max(0, Math.floor(x1 * scale)), sy = Math.max(0, Math.floor((H - top) * scale));
+    const sw = Math.min(canvas.width - sx, Math.ceil((x2 - x1) * scale)), sh = Math.min(canvas.height - sy, Math.ceil((top - bot) * scale));
+    if (sw <= 0 || sh <= 0) return null;
+    const out = document.createElement('canvas'); out.width = sw; out.height = sh;
+    out.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    b.imgEm = (x2 - x1) / main;
+    return out.toDataURL('image/png');
+  }
+  async function enhance(doc, pdf) {
+    const byPage = {};
+    doc.blocks.forEach((b, i) => {
+      if (b.type !== 'eq' || !b.items || !b.items.length) return;
+      const cnt = {}; b.items.forEach(it => { cnt[it.page] = (cnt[it.page] || 0) + 1; });
+      const p = +Object.entries(cnt).sort((a, c) => c[1] - a[1])[0][0];
+      (byPage[p] = byPage[p] || []).push(i);
+    });
+    for (const p of Object.keys(byPage).map(Number)) {
+      if (DOC !== doc) return;
+      try {
+        const page = await pdf.getPage(p), vp1 = page.getViewport({scale: 1}), [x0, y0, , y1] = vp1.viewBox;
+        const rules = await EQTEX.pageRules(page, pdfjsLib.OPS, [x0, y0]);
+        const scale = 2.5, vp = page.getViewport({scale});
+        const canvas = document.createElement('canvas'); canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+        await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+        const names = {};
+        byPage[p].forEach(i => doc.blocks[i].items.forEach(it => {
+          if (it.f && !(it.f in names)) { try { names[it.f] = page.commonObjs.get(it.f).name || ''; } catch (e) { names[it.f] = ''; } }
+        }));
+        for (const i of byPage[p]) {
+          const b = doc.blocks[i];
+          try { const r = EQTEX.build(b.items, names, rules); if (r.rows.length) { b.tex = r.rows; b.ok = r.ok; } } catch (e) { console.error(e); }
+          try { b.img = crop(canvas, b.items, scale, y1 - y0, b); } catch (e) { console.error(e); }
+          b.done = true;
+          if (DOC === doc) refresh(i);
+        }
+        canvas.width = canvas.height = 0;
+      } catch (e) {
+        console.error(e);
+        byPage[p].forEach(i => { doc.blocks[i].done = true; if (DOC === doc) refresh(i); });
+      }
+    }
+  }
+  docEl.addEventListener('click', e => {
+    const btn = e.target.closest('.eq-btn'); if (!btn) return;
+    const el = btn.closest('.blk'), i = +el.dataset.i, b = DOC && DOC.blocks[i]; if (!b) return;
+    e.preventDefault();
+    if (btn.dataset.eq === 'toggle') { b.view = view(b) === 'img' ? 'tex' : 'img'; refresh(i); }
+    else if (btn.dataset.eq === 'copy') {
+      const text = b.tex.join('\n');
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => status('LaTeX copied', 1500), () => status('Copy failed: select the equation text instead', 3000));
+    }
+  });
+  return {inner, enhance, refresh};
+})();
 
 function sectionsOf(blocks) {
   const secs = []; let cur = {head: null, items: []};
@@ -907,7 +1535,7 @@ function buildOutline() {
   const B = DOC.blocks, heads = B.map((b, i) => b.type === 'h' ? i : -1).filter(i => i >= 0);
   $('#outline').innerHTML = heads.length ? heads.map(i => {
     const sub = /^\d+\.\d+/.test(B[i].text);
-    return `<a href="#" data-go="${i}" class="${sub ? 'sub' : ''}">${esc(B[i].text)}</a>`;
+    return `<a href="#" data-go="${i}" class="${sub ? 'sub' : ''}">${esc(unmark(B[i].text))}</a>`;
   }).join('') : '<span class="empty-note">No section headings found.</span>';
   $$('#outline a').forEach((a, k) => { if (!a.dataset.go && heads[k] !== undefined) a.dataset.go = heads[k]; });
   const acr = Object.entries(DOC.acr || {});
@@ -1016,13 +1644,14 @@ async function openPdf(file) {
       const page = await pdf.getPage(p), vp = page.getViewport({scale: 1}), tc = await page.getTextContent();
       const [x0, y0, x1, y1] = vp.viewBox;
       const items = tc.items.filter(it => it.str && it.str.trim() && Math.abs(it.transform[1]) < 0.25 * Math.abs(it.transform[0]) && Math.abs(it.transform[0]) > 0)
-        .map(it => ({s: it.str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''), x: it.transform[4] - x0, y: it.transform[5] - y0, w: it.width, h: Math.hypot(it.transform[2], it.transform[3]) || it.height || 10}));
+        .map(it => ({s: it.str, f: it.fontName, x: it.transform[4] - x0, y: it.transform[5] - y0, w: it.width, h: Math.hypot(it.transform[2], it.transform[3]) || it.height || 10}));
       pages.push(pageLines(items, x1 - x0, y1 - y0, p));
     }
     const blocks = buildBlocks(pages);
     if (!blocks.length) { status('No text found. This PDF is probably a scan (images only).', 5000); return; }
     loadBlocks(file.name.replace(/\.pdf$/i, ''), blocks);
     status(`Loaded ${pdf.numPages} pages`, 1800);
+    EQV.enhance(DOC, pdf);   // typeset equations in the background
   } catch (err) {
     console.error(err);
     status('Could not read that PDF: ' + (err.message || err), 6000);
@@ -1049,6 +1678,8 @@ $('#pasteCancel').onclick = () => $('#modal').classList.remove('show');
 $('#pasteGo').onclick = () => {
   const t = $('#pasteArea').value.trim(); if (!t) return;
   const blocks = t.split(/\n\s*\n/).map(p => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean).map(p => {
+    const dm = p.match(/^\$\$([\s\S]+)\$\$$/) || p.match(/^\\\[([\s\S]+)\\\]$/);
+    if (dm) return {type: 'eq', text: p, tex: [dm[1].trim()], ok: true, done: true};
     if (/^#+\s*/.test(p)) return {type: 'h', text: p.replace(/^#+\s*/, '')};
     if (/^(fig(ure)?\.?|table)\s*\d+[.:]/i.test(p)) return {type: 'cap', text: p};
     return {type: 'p', text: p};
@@ -1068,7 +1699,9 @@ const SAMPLE = [
   {type:'p', text:'Vector beams, whose polarization changes across the transverse plane, are now routine to generate with liquid-crystal devices such as the SLM or a q-plate. Here we ask how much information such a beam can carry while remaining invisible to an intensity measurement, and how robustly the receiver can recover it.'},
   {type:'h', text:'2 Method'},
   {type:'p', text:'The SLM imprints a phase difference between two orthogonal polarization components. The QWP then converts this phase into a spatially varying polarization state. The receiver measures the Stokes parameters with a rotating polarizer and recovers the image from the map of S2.'},
-  {type:'eq', text:'S1 = |Ex|2 − |Ey|2 ,  S2 = 2 Re(Ex E*y)   (1)'},
+  {type:'eq', text:'S1 = |Ex|2 − |Ey|2 ,  S2 = 2 Re(Ex E*y)   (1)', tex:['S_{1}=|E_{x}|^{2}-|E_{y}|^{2},\\quad S_{2}=2\\mathrm{Re}(E_{x}E_{y}^{*})\\tag{1}'], ok:true, done:true},
+  {type:'p', text:'The input is a Gaussian beam with waist w0, whose intensity profile is'},
+  {type:'eq', text:'I(r) = I0 exp(−2r2/w02)   (2)', tex:['I(r)=I_{0}\\exp\\left(-\\frac{2r^{2}}{w_{0}^{2}}\\right)\\tag{2}'], ok:true, done:true},
   {type:'p', text:'Because the total intensity S0 is unchanged by the encoding, the beam looks identical with or without the hidden image unless one looks through a polarizer at the right angle.'},
   {type:'h', text:'3 Results'},
   {type:'cap', text:'Figure 1: Intensity image (left) and recovered S2 map (right). The hidden letters appear only in the polarization measurement.'},
@@ -1141,7 +1774,7 @@ const POS = (() => {
     const bar = $('#resume'); if (!bar) return;
     const p = get();
     if (!p || (p.blk <= 1 && !p.wi)) { bar.hidden = true; return; }
-    const sec = p.section ? ' in “' + p.section.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.)\s+/, '') + '”' : '';
+    const sec = p.section ? ' in “' + unmark(p.section).replace(/^(\d+(\.\d+)*\.?|[IVX]+\.)\s+/, '') + '”' : '';
     $('#resumeText').textContent = 'You stopped at ' + Math.round((p.pct || 0) * 100) + '%' + sec + ', ' + ago(Date.now() - p.at) + '.';
     bar.hidden = false;
   }
@@ -1210,7 +1843,7 @@ const RSVP = (() => {
       const n = Math.max(1, S.rsvpChunk | 0);
       let sentStart = true;
       for (let k = 0; k < raw.length; k += n) {
-        const group = raw.slice(k, k + n).map(w => typeof clean === 'function' ? clean(w) : w).filter(Boolean);
+        const group = raw.slice(k, k + n).map(w => unmark(typeof clean === 'function' ? clean(w) : w).replace(/[\u0000-\u001F]/g, '')).filter(Boolean);
         if (!group.length) continue;
         const last = group[group.length - 1];
         let end = null;
@@ -1409,7 +2042,7 @@ function collect() {
     name: $('#fbName').value.trim(),
     note: $('#fbNote').value.trim(),
     rsvp_seconds: TRACK.rsvpSec || 0,
-    app_version: 'v3',
+    app_version: 'v4',
   });
   return row;
 }

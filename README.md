@@ -10,6 +10,7 @@ Drop in a PDF and it gets reflowed into one adjustable column:
 - **Text:** OpenDyslexic, Atkinson Hyperlegible, Lexend and more; size, line, letter and word spacing; line width; cream, mint, sky and dark backgrounds
 - **Emphasis:** bold the start of each word, line color gradients for tracking, tinted b / d / p / q
 - **Focus:** paragraph spotlight (J / K to move), a reading ruler, and **one word at a time** mode (words flash in one spot so your eyes don't have to move; adjustable speed, pauses at sentence ends, Space / ← → / ↑ / Esc controls)
+- **Equations:** PDFs don't contain LaTeX, so the reader rebuilds it from where each glyph sits and where fraction bars are drawn (sub/superscripts, fractions, limits on ∑ and ∫, square roots, matrices, `cases`, accents, equation numbers) and typesets it with KaTeX in your reading theme. Each equation has **Show original** (a crisp snapshot from the PDF, used automatically when the rebuild looks unreliable) and **Copy LaTeX**. Inline sub/superscripts in sentences are kept too, and pasted text can include `$$ … $$` equations.
 - **Your place, remembered:** a 📍 *You stopped here* marker on the exact word where you left off, saved per paper (per library item in Zotero). Reopen a paper to jump back or continue in one-word mode; Shift+click any word to mark your place. Great for textbooks.
 - **Paper tools:** acronym hover hints, skim order (abstract → figures → conclusion), outline, folded references and equations
 
@@ -45,13 +46,14 @@ Collected columns: `submitted_at, session_id, tiredness, font, size, lh, ls, ws,
 Backend setup: see [`feedback-backend/Code.gs`](feedback-backend/Code.gs). The web-app URL goes in `FEEDBACK_URL` near the top of the main script in `index.html`. Until it's set, the button shows the settings as CSV for testers to copy.
 
 ## Limitations
-- Equations come out garbled (PDFs store math as scattered glyphs), so they can be folded away.
+- Equation rebuilding is tuned for LaTeX-made PDFs (Computer Modern / Latin Modern). Equations from other tools may fall back to the original snapshot.
 - Unusual layouts may scramble reading order; scanned PDFs have no text layer.
 - Figures are shown by caption only.
 
 ## Files
 - `index.html`: the whole app (the parser is inlined)
 - `parse.js`: readable copy of the PDF-to-paragraphs parser
+- `eqmath.js`: rebuilds LaTeX from equation glyphs and fraction bars
 
 ## Credits
 - [PDF.js](https://mozilla.github.io/pdf.js/) (Apache 2.0)

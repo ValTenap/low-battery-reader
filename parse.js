@@ -4,32 +4,85 @@
 
 function median(a) { if (!a.length) return 0; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; }
 
+// private-use markers for inline sub/superscripts: \uE000 sub \uE001 end, \uE002 sup \uE003 end
+const SUB0 = '\uE000', SUB1 = '\uE001', SUP0 = '\uE002', SUP1 = '\uE003';
 function joinItems(items) {
   items.sort((a, b) => a.x - b.x);
+  // main size and baseline of the line
+  const hist = {};
+  items.forEach(i => { const k = Math.round(i.h * 2) / 2; hist[k] = (hist[k] || 0) + Math.max(1, i.s.trim().length); });
+  const main = +Object.entries(hist).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+  const mainYs = items.filter(i => Math.abs(i.h - main) < main * 0.12).map(i => i.y);
+  const base = median(mainYs.length ? mainYs : items.map(i => i.y));
   let text = '', prevEnd = null;
   for (const it of items) {
-    if (text && prevEnd !== null && !/\s$/.test(text) && !/^\s/.test(it.s) && it.x - prevEnd > 0.15 * it.h) text += ' ';
-    text += it.s; prevEnd = it.x + it.w;
+    let str = it.s, script = false;
+    if (it.h < main * 0.86 && str.trim()) {
+      if (it.y > base + 0.18 * main) { str = SUP0 + str.replace(/\s+/g, '') + SUP1; script = true; }
+      else if (it.y < base - 0.08 * main) { str = SUB0 + str.replace(/\s+/g, '') + SUB1; script = true; }
+    }
+    if (!script && text && prevEnd !== null && !/\s$/.test(text) && !/^\s/.test(str) && it.x - prevEnd > 0.15 * it.h) text += ' ';
+    text += str; prevEnd = it.x + it.w;
   }
-  return text.replace(/\s+/g, ' ').trim();
+  return combineAccents(text.replace(/\s+/g, ' ').trim());
+}
+const COMBINE = {'ˆ': '\u0302', '˜': '\u0303', '¯': '\u0304', 'ˉ': '\u0304', '˙': '\u0307', '¨': '\u0308', 'ˇ': '\u030C'};
+function combineAccents(t) {
+  // "yˆ" -> "ŷ" (accent after its letter), "(ˆx" -> "(x̂" (accent before its letter)
+  return t.replace(/([\p{L}])\s?([ˆ˜¯ˉ˙¨ˇ])/gu, (m, l, a) => l + COMBINE[a])
+          .replace(/([ˆ˜¯ˉ˙¨ˇ])\s?([\p{L}])/gu, (m, a, l) => l + COMBINE[a]);
 }
 
 function makeLine(items, col, page) {
   const xs = items.map(i => i.x), xe = items.map(i => i.x + i.w);
   // height weighted toward the dominant text, so superscripts don't distort it
   const hs = []; items.forEach(i => { for (let k = 0; k < Math.max(1, i.s.length); k++) hs.push(i.h); });
-  return { text: joinItems(items), x: Math.min(...xs), xEnd: Math.max(...xe), y: median(items.map(i => i.y)), h: median(hs), col, page };
+  return { text: joinItems(items), items: items.map(i => ({...i, page})), x: Math.min(...xs), xEnd: Math.max(...xe), y: median(items.map(i => i.y)), h: median(hs), col, page };
+}
+
+// TeX's extension font (big ∑ ∫ ( ) √) encodes glyphs as control chars / a few letters; detect it per font
+const EXT_CHARS = /^[\u0000-\u001FPQRSTXYZpqrstHILMNO\[\\\]()|{}∑∏∐⋃⋂∫∬∭∮√⟨⟩‖⌊⌋⌈⌉⎛⎜⎝⎞⎟⎠⎡⎢⎣⎤⎥⎦⎧⎨⎩⎪⎫⎬⎭⎮⌠⌡]+$/;
+function markExtFonts(items) {
+  const by = {};
+  items.forEach(i => { if (i.f) (by[i.f] = by[i.f] || []).push(i); });
+  for (const f in by) {
+    const its = by[f];
+    const ext = its.every(i => i.s.trim().length <= 2 && EXT_CHARS.test(i.s.trim())) &&
+      (its.some(i => /[\u0000-\u001F∑∏∫√⎛⎝⎧]/.test(i.s)) || its.length <= 6);
+    if (ext) its.forEach(i => { i.ext = true; });
+  }
 }
 
 function pageLines(items, W, H, page) {
-  // rows by y
-  items = items.slice().sort((a, b) => b.y - a.y || a.x - b.x);
-  const rows = [];
-  for (const it of items) {
-    const r = rows[rows.length - 1];
-    if (r && Math.abs(r.y - it.y) < 0.55 * Math.max(it.h, r.h)) r.items.push(it);
-    else rows.push({ y: it.y, h: it.h, items: [it] });
-  }
+  markExtFonts(items);
+  // big extension glyphs hang below their reported baseline: cluster them by their visual centre
+  const yc = it => it.ext ? it.y - it.h : it.s.trim() === '√' ? it.y - 0.8 * it.h : it.y;
+  // rows: first full-size glyphs, then attach smaller ones (scripts) to the nearest row
+  items = items.slice().sort((a, b) => yc(b) - yc(a) || a.x - b.x);
+  const hist = {};
+  items.forEach(i => { const k = Math.round(i.h * 2) / 2; hist[k] = (hist[k] || 0) + i.s.length; });
+  const body = +(Object.entries(hist).sort((a, b) => b[1] - a[1])[0] || [10])[0];
+  const cluster = (list, rows) => {
+    for (const it of list) {
+      const r = rows[rows.length - 1];
+      if (r && Math.abs(r.y - yc(it)) < 0.6 * Math.max(it.h, r.h)) {
+        r.items.push(it);
+        if (!it.ext && (it.h > r.h * 1.05 || r.extOnly)) { r.y = yc(it); r.h = it.h; r.extOnly = false; }
+      }
+      else rows.push({ y: yc(it), h: it.h, items: [it], extOnly: !!it.ext });
+    }
+    return rows;
+  };
+  const big = items.filter(i => i.ext || i.h >= body * 0.86), small = items.filter(i => !(i.ext || i.h >= body * 0.86));
+  const rows = cluster(big, []);
+  const loose = [];
+  small.forEach(it => {
+    let best = null, bd = Infinity;
+    rows.forEach(r => { const d = Math.abs(r.y - yc(it)); if (d < bd) { bd = d; best = r; } });
+    if (best && bd < 0.85 * best.h) best.items.push(it); else loose.push(it);
+  });
+  cluster(loose, []).forEach(r => rows.push(r));
+  rows.sort((a, b) => b.y - a.y);
   // gutter detection on a coverage histogram
   const N = 240, cov = new Array(N).fill(0);
   for (const it of items) {
@@ -113,6 +166,7 @@ function buildBlocks(pages) {
     return false;
   };
   const endsSent = t => /[.!?:]["')\]]?$/.test(t);
+  const bare = t => t.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.|[A-H]\.)\s+/, '').replace(/[.:]$/, '');
 
   const blocks = []; let cur = null, prev = null, inRefs = false, titleDone = false;
   const close = () => { if (cur) blocks.push(cur); cur = null; };
@@ -120,10 +174,10 @@ function buildBlocks(pages) {
     let t = l.text;
     if (!t) continue;
     const ab = t.match(/^abstract\s*[—–:.\-]\s*(.+)$/i);
-    if (ab) { close(); blocks.push({ type: 'h', text: 'Abstract' }); t = ab[1]; cur = { type: 'p', text: '' }; }
+    if (ab) { close(); blocks.push({ type: 'h', text: 'Abstract' }); t = ab[1]; cur = { type: 'p', text: '', items: [] }; }
     else if (isHeading(l, prev)) {
       close();
-      const isTitle = !titleDone && l.page === 1 && l.h > body * 1.3;
+      const isTitle = !titleDone && l.page === 1 && l.h > body * 1.3 && !/^((\d+(\.\d+)*\.?)|([IVX]+\.))\s/.test(t) && !SECTION_WORDS.test(bare(t));
       const last = blocks[blocks.length - 1];
       if (isTitle && last && last.type === 'title') last.text += ' ' + t;
       else blocks.push({ type: isTitle ? 'title' : 'h', text: t });
@@ -141,9 +195,13 @@ function buildBlocks(pages) {
       if (endsSent(prev.text) && (indent || prevShort)) newPara = true;
       if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) newPara = true;
       if (inRefs && /^\[?\d{1,3}[\].)]\s/.test(t)) newPara = true;
+      const mathy = x => { const p = x.text.replace(/[\uE000-\uE003]/g, ''); if ((p.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).length >= 3) return false; return /[\u0000-\u001F]/.test(p) || letters(p) < p.length * 0.55 || (p.length < 40 && x.x > x.left + 3 * body && x.xEnd < x.right - 3 * body); };
+      if (mathy(l) !== mathy(prev)) newPara = true;
     }
     if (newPara && cur && cur.text) close();
-    if (!cur) cur = { type: 'p', text: '' };
+    if (!cur) cur = { type: 'p', text: '', items: [] };
+    if (!cur.items) cur.items = [];
+    cur.items.push(...(l.items || []).map(i => ({...i, H: l.H})));
     if (!cur.text) cur.text = t;
     else if (/[a-z]-$/.test(cur.text) && /^[a-z]/.test(t)) cur.text = cur.text.slice(0, -1) + t;
     else cur.text += ' ' + t;
@@ -152,10 +210,19 @@ function buildBlocks(pages) {
   }
   close();
   // classify
+  const plain = t => t.replace(/[\uE000-\uE003]/g, '');
+  const words = t => (t.match(/(^|[^\p{L}])[a-z]{3,}(?=[^\p{L}]|$)/gu) || []).filter(w => !/^\W*(exp|sin|cos|tan|log|max|min|det|sinh|cosh|tanh|lim|sup|inf|arg)$/.test(w)).length;
   for (const b of blocks) {
     if (b.type !== 'p') continue;
-    if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(b.text)) b.type = 'cap';
-    else if (b.text.length < 260 && letters(b.text) < b.text.length * 0.55) b.type = 'eq';
+    const t = plain(b.text);
+    if (/^(fig(ure)?\.?|table)\s*\d+[.:|]/i.test(t)) b.type = 'cap';
+    else if (t.length < 260 && letters(t) < t.length * 0.55 && words(t) < 3) b.type = 'eq';
+  }
+  // short fragments right next to an equation are usually its numerator/denominator rows
+  const isFrag = b => b.type === 'p' && plain(b.text).length <= 30 && !/[.?!:;]$/.test(b.text) && plain(b.text).split(/\s+/).length <= 4;
+  for (let k = 0; k < blocks.length; k++) {
+    if (!isFrag(blocks[k])) continue;
+    if ((blocks[k - 1] && blocks[k - 1].type === 'eq') || (blocks[k + 1] && blocks[k + 1].type === 'eq')) blocks[k].type = 'eq';
   }
   // author/affiliation lines between the title and the first real section
   const tIdx = blocks.findIndex(b => b.type === 'title');
@@ -173,8 +240,10 @@ function buildBlocks(pages) {
   const merged = [];
   for (const b of blocks) {
     const m = merged[merged.length - 1];
-    if (m && m.type === 'eq' && b.type === 'eq') m.text += '  ' + b.text; else merged.push(b);
+    if (m && m.type === 'eq' && b.type === 'eq') { m.text += '  ' + b.text; m.items = (m.items || []).concat(b.items || []); }
+    else merged.push(b);
   }
+  merged.forEach(b => { if (b.type !== 'eq') delete b.items; });
   return merged;
 }
 
