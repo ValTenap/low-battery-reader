@@ -163,7 +163,11 @@ function buildBlocks(pages) {
     const b = blocks[i];
     const bare = b.text.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.)\s+/, '').replace(/[.:]$/, '');
     if (b.type === 'h' && (SECTION_WORDS.test(bare) || /^(\d|[IVX]+\.)/.test(b.text))) break;
-    if (b.type === 'h' || b.type === 'p') { if (b.type === 'p' && b.text.length > 300) break; b.type = 'meta'; }
+    if (i - tIdx > 8) break;
+    // prose (a real paragraph) ends the author/affiliation run
+    const prose = b.text.length > 160 || (b.text.length > 60 && /[.!?]["')]?$/.test(b.text) && b.text.split(/\s+/).length > 10);
+    if (prose) break;
+    if (b.type === 'h' || b.type === 'p') b.type = 'meta';
   }
   // merge consecutive equation fragments
   const merged = [];

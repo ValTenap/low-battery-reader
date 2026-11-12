@@ -61,7 +61,10 @@ $$('[data-preset]').forEach(b => b.addEventListener('click', () => { S = {...PRE
 // ---------- document state ----------
 let DOC = null; // {name, blocks, acr}
 
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// characters XML (and so Zotero's windows) refuses: control chars, lone surrogates
+const BAD_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const clean = s => String(s == null ? '' : s).replace(BAD_XML, '');
+const esc = s => clean(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TINT = {b:'tl-b', d:'tl-d', p:'tl-p', q:'tl-q'};
 function chars(s) {
   if (!S.tint) return esc(s);
@@ -258,12 +261,20 @@ async function openPdfData(data, name, meta) {
     for (let p = 1; p <= pdf.numPages; p++) {
       status(`Reading page ${p} of ${pdf.numPages}…`);
       const page = await pdf.getPage(p), vp = page.getViewport({scale: 1}), tc = await page.getTextContent();
-      const items = tc.items.filter(it => it.str && it.str.trim() && Math.abs(it.transform[1]) < 0.01 && Math.abs(it.transform[2]) < 0.01)
-        .map(it => ({s: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: Math.abs(it.transform[3]) || it.height || 10}));
-      pages.push(pageLines(items, vp.width, vp.height, p));
+      const [x0, y0, x1, y1] = vp.viewBox;
+      const items = tc.items.map(it => ({...it, str: clean(it.str)}))
+        // keep horizontal text, including slightly tilted OCR text; drop sideways stamps
+        .filter(it => it.str.trim() && Math.abs(it.transform[1]) < 0.25 * Math.abs(it.transform[0]) && Math.abs(it.transform[0]) > 0)
+        .map(it => ({s: it.str, x: it.transform[4] - x0, y: it.transform[5] - y0, w: it.width, h: Math.hypot(it.transform[2], it.transform[3]) || it.height || 10}));
+      pages.push(pageLines(items, x1 - x0, y1 - y0, p));
     }
-    const blocks = withMeta(buildBlocks(pages), meta);
-    if (!blocks.some(b => b.type === 'p')) { status('No text found. This PDF is probably a scan (images only).', 6000); if (blocks.length) loadBlocks(name, blocks); return; }
+    const parsed = buildBlocks(pages);
+    const blocks = withMeta(parsed, meta);
+    if (!parsed.some(b => b.type === 'p' || b.type === 'cap' || b.type === 'ref')) {
+      if (meta) loadBlocks(name, blocks.concat([{type: 'meta', text: 'This PDF has no readable text layer, so only the library info is shown. It is probably a scanned paper; Zotero can’t reflow those without OCR.'}]));
+      status('No text found in this PDF (probably a scan).', 7000);
+      return;
+    }
     loadBlocks(name, blocks, 'pdf');
     status(`Loaded ${pdf.numPages} pages`, 1800);
   } catch (err) {

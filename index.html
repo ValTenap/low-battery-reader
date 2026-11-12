@@ -452,7 +452,11 @@ function buildBlocks(pages) {
     const b = blocks[i];
     const bare = b.text.replace(/^(\d+(\.\d+)*\.?|[IVX]+\.)\s+/, '').replace(/[.:]$/, '');
     if (b.type === 'h' && (SECTION_WORDS.test(bare) || /^(\d|[IVX]+\.)/.test(b.text))) break;
-    if (b.type === 'h' || b.type === 'p') { if (b.type === 'p' && b.text.length > 300) break; b.type = 'meta'; }
+    if (i - tIdx > 8) break;
+    // prose (a real paragraph) ends the author/affiliation run
+    const prose = b.text.length > 160 || (b.text.length > 60 && /[.!?]["')]?$/.test(b.text) && b.text.split(/\s+/).length > 10);
+    if (prose) break;
+    if (b.type === 'h' || b.type === 'p') b.type = 'meta';
   }
   // merge consecutive equation fragments
   const merged = [];
@@ -760,9 +764,10 @@ async function openPdf(file) {
     for (let p = 1; p <= pdf.numPages; p++) {
       status(`Reading page ${p} of ${pdf.numPages}…`);
       const page = await pdf.getPage(p), vp = page.getViewport({scale: 1}), tc = await page.getTextContent();
-      const items = tc.items.filter(it => it.str && it.str.trim() && Math.abs(it.transform[1]) < 0.01 && Math.abs(it.transform[2]) < 0.01)
-        .map(it => ({s: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: Math.abs(it.transform[3]) || it.height || 10}));
-      pages.push(pageLines(items, vp.width, vp.height, p));
+      const [x0, y0, x1, y1] = vp.viewBox;
+      const items = tc.items.filter(it => it.str && it.str.trim() && Math.abs(it.transform[1]) < 0.25 * Math.abs(it.transform[0]) && Math.abs(it.transform[0]) > 0)
+        .map(it => ({s: it.str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''), x: it.transform[4] - x0, y: it.transform[5] - y0, w: it.width, h: Math.hypot(it.transform[2], it.transform[3]) || it.height || 10}));
+      pages.push(pageLines(items, x1 - x0, y1 - y0, p));
     }
     const blocks = buildBlocks(pages);
     if (!blocks.length) { status('No text found. This PDF is probably a scan (images only).', 5000); return; }
