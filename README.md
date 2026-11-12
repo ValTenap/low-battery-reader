@@ -14,6 +14,15 @@ Drop in a PDF and it gets reflowed into one adjustable column:
 
 The PDF is processed entirely in your browser and is never uploaded.
 
+## Does this actually help? The research
+I built this as a tool for my own ADHD, and I've tried to be honest about what the evidence supports. **Full write-up with 18 references: [RESEARCH.md](RESEARCH.md).**
+
+- **Best supported:** personalization (the best font differs per person, with ~35% speed gaps between someone's best and worst fonts), reflowing text into a clean single column, extra letter spacing, shorter lines, and digital reading rulers.
+- **ADHD-specific:** a 2025 study found that reducing eye movements during reading improved comprehension for students with ADHD but not for controls, and on-screen text tends to be harder for readers with ADHD than print.
+- **Not supported, kept as comfort options:** dyslexia fonts and bolding the start of words showed no average benefit in controlled studies. Line color gradients have mixed results, and dark mode generally reads slightly worse than light backgrounds.
+
+That's why the tool focuses on letting each reader find their own settings, and why the prototype collects anonymous settings data to tune the presets.
+
 ## Zotero plugin
 **[Download Low-Battery Reader for Zotero](https://valtenap.github.io/low-battery-reader/zotero/low-battery-reader.xpi)** (latest, currently v0.1.2) (Zotero 7 and 8)
 
